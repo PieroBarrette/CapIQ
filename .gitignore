@@ -1,0 +1,15 @@
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/.browse*
+firmware/.vscode/c_cpp_properties.json
+firmware/.vscode/launch.json
+firmware/.vscode/ipch/
+
+# Système
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Divers
+*.log
+node_modules/

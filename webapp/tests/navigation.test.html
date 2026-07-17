@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Capiq — Tests navigation</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0e1712; color: #e8efe9; padding: 20px; }
+    .pass { color: #3ecf6f; }
+    .fail { color: #ff5252; font-weight: bold; }
+    h1 { font-size: 1.2rem; }
+    li { margin: 4px 0; font-family: Consolas, monospace; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>Capiq — Auto-tests des calculs de navigation</h1>
+  <p>Page de développement (non mise en cache par la PWA). Ouvrir via le serveur local.</p>
+  <ul id="results"></ul>
+  <p id="summary"></p>
+
+  <script type="module">
+    import { normalize360, wrap180, calculateDistance, calculateBearing }
+      from '../src/navigation_service.js';
+    import { Waypoint } from '../models/navigation_model.js';
+
+    const results = [];
+    function check(name, actual, expected, tolerance = 0) {
+      const ok = typeof expected === 'number'
+        ? Math.abs(actual - expected) <= tolerance
+        : actual === expected;
+      results.push({ name, ok, detail: `attendu ${expected}${tolerance ? '±' + tolerance : ''}, obtenu ${actual}` });
+    }
+    function checkThrows(name, fn) {
+      let threw = false;
+      try { fn(); } catch { threw = true; }
+      results.push({ name, ok: threw, detail: threw ? 'exception levée ✓' : 'AUCUNE exception' });
+    }
+
+    // ---- Angles (convention Capiq : erreur = wrap180(cible - cap)) ----
+    check('normalize360(-90) = 270', normalize360(-90), 270);
+    check('normalize360(725) = 5', normalize360(725), 5, 1e-9);
+    check('wrap180(350) = -10', wrap180(350), -10, 1e-9);
+    check('wrap180(-190) = 170', wrap180(-190), 170, 1e-9);
+    check('erreur cible 90 / cap 75 = +15 (tourner à droite)', wrap180(90 - 75), 15, 1e-9);
+    check('erreur cible 90 / cap 123.5 = -33.5 (tourner à gauche)', wrap180(90 - 123.5), -33.5, 1e-9);
+    check('erreur cible 10 / cap 350 = +20 (passage du nord)', wrap180(10 - 350), 20, 1e-9);
+
+    // ---- Distances (haversine) ----
+    const eq0 = { latitude: 0, longitude: 0 };
+    const eq1 = { latitude: 0, longitude: 1 };
+    check('distance point identique = 0 m', calculateDistance(eq0, eq0), 0);
+    check('1° de longitude à l\'équateur ≈ 111 195 m', calculateDistance(eq0, eq1), 111195, 200);
+    check('distance symétrique A→B = B→A',
+      calculateDistance(eq0, eq1) - calculateDistance(eq1, eq0), 0, 1e-6);
+
+    // ---- Azimuts ----
+    check('azimut vers l\'est = 90°', calculateBearing(eq0, eq1), 90, 0.01);
+    check('azimut vers l\'ouest = 270°', calculateBearing(eq1, eq0), 270, 0.01);
+    check('azimut vers le nord = 0°',
+      calculateBearing({ latitude: 48, longitude: -68 }, { latitude: 49, longitude: -68 }), 0, 0.01);
+    check('azimut vers le sud = 180°',
+      calculateBearing({ latitude: 49, longitude: -68 }, { latitude: 48, longitude: -68 }), 180, 0.01);
+
+    // ---- Modèle Waypoint ----
+    const wp = new Waypoint({ latitude: 48.45, longitude: -68.52, name: 'Camp' });
+    check('Waypoint conserve le nom', wp.name, 'Camp');
+    check('Waypoint round-trip JSON', Waypoint.fromJSON(wp.toJSON()).latitude, 48.45);
+    checkThrows('Waypoint latitude 91 rejetée', () => new Waypoint({ latitude: 91, longitude: 0 }));
+    checkThrows('Waypoint longitude 200 rejetée', () => new Waypoint({ latitude: 0, longitude: 200 }));
+
+    // ---- Rendu ----
+    const ul = document.getElementById('results');
+    let passed = 0;
+    for (const r of results) {
+      const li = document.createElement('li');
+      li.className = r.ok ? 'pass' : 'fail';
+      li.textContent = `${r.ok ? '✓' : '✗'} ${r.name} — ${r.detail}`;
+      ul.appendChild(li);
+      if (r.ok) passed++;
+    }
+    const summary = document.getElementById('summary');
+    summary.textContent = `${passed}/${results.length} tests réussis`;
+    summary.className = passed === results.length ? 'pass' : 'fail';
+    document.title = `[${passed}/${results.length}] Tests Capiq`;
+  </script>
+</body>
+</html>

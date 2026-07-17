@@ -1,0 +1,292 @@
+/* ============================================================
+   Capiq V0.1 — thème sombre "forêt"
+   Conçu pour un téléphone en extérieur : gros caractères,
+   fort contraste, cibles tactiles >= 48 px (gants).
+   ============================================================ */
+
+:root {
+  --bg: #0e1712;
+  --panel: #16221b;
+  --panel-2: #1c2b22;
+  --border: #2a3d31;
+  --text: #e8efe9;
+  --muted: #93a69a;
+  --accent: #ff8c2e;        /* orange cible */
+  --accent-dark: #d96f15;
+  --ok: #3ecf6f;
+  --warn: #ffb020;
+  --err: #ff5252;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+}
+
+/* ---------- En-tête ---------- */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  padding-top: calc(12px + env(safe-area-inset-top));
+  background: rgba(14, 23, 18, 0.92);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+}
+
+.status-pill {
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.status-pill[data-state="on"]  { color: #06130a; background: var(--ok); border-color: var(--ok); }
+.status-pill[data-state="wait"] { color: #131003; background: var(--warn); border-color: var(--warn); }
+
+/* ---------- Structure ---------- */
+.container {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.view { display: none; flex-direction: column; gap: 14px; }
+.view.active { display: flex; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card h2 { font-size: 1rem; color: var(--muted); font-weight: 600; }
+
+.hidden { display: none !important; }
+
+/* ---------- Bannières ---------- */
+.banner {
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+.banner.warn { background: rgba(255, 176, 32, 0.12); border: 1px solid rgba(255, 176, 32, 0.4); }
+.banner.info { background: rgba(147, 166, 154, 0.1); border: 1px solid var(--border); color: var(--muted); }
+
+/* ---------- Boussole ---------- */
+.compass-card { align-items: center; }
+
+#compass-dial {
+  width: min(76vw, 320px);
+  height: auto;
+  touch-action: none;   /* le doigt pilote le cadran, pas le défilement */
+  user-select: none;
+}
+
+.direction-banner {
+  width: 100%;
+  text-align: center;
+  font-size: 1.15rem;
+  font-weight: 700;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+.direction-banner.muted { color: var(--muted); font-weight: 500; font-size: 0.95rem; }
+.direction-banner.ok    { color: #06130a; background: var(--ok); }
+.direction-banner.turn  { color: #131003; background: var(--warn); }
+
+/* ---------- Statistiques ---------- */
+.stats-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 1.7rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.stat-value.accent { color: var(--accent); }
+.stat-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+/* ---------- Saisie de cible ---------- */
+.field-label { font-size: 0.9rem; color: var(--muted); }
+
+.target-row { display: flex; align-items: center; gap: 8px; }
+
+input[type="number"] {
+  width: 110px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.unit { font-size: 1.3rem; color: var(--muted); }
+
+.cardinal-hints { display: flex; gap: 6px; margin-left: auto; }
+
+.chip {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.chip:active { background: var(--accent); color: #131003; }
+
+input[type="range"] {
+  width: 100%;
+  height: 44px;
+  accent-color: var(--accent);
+}
+
+/* ---------- Boutons ---------- */
+.btn {
+  min-height: 52px;
+  border-radius: 14px;
+  border: none;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: transform 0.06s ease, opacity 0.2s;
+}
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-block { width: 100%; }
+
+.btn-primary { background: var(--accent); color: #131003; }
+.btn-primary:not(:disabled):hover { background: var(--accent-dark); }
+
+.btn-secondary {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+/* ---------- Méta ---------- */
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--muted);
+  padding: 0 4px;
+}
+
+/* ---------- Réglages ---------- */
+.setting { display: flex; flex-direction: column; gap: 6px; }
+
+.setting label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+.setting output { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.hint { font-size: 0.82rem; color: var(--muted); line-height: 1.45; }
+
+/* ---------- Barre d'onglets ---------- */
+.tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  background: rgba(14, 23, 18, 0.96);
+  backdrop-filter: blur(6px);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 10;
+}
+
+.tab {
+  flex: 1;
+  min-height: 60px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-top: 3px solid transparent;
+}
+.tab.active { color: var(--accent); border-top-color: var(--accent); }
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 90vw;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  z-index: 20;
+  animation: toast-in 0.2s ease;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}

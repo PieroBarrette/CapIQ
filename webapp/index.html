@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Capiq — guidage directionnel forestier. Configuration d'azimut et suivi temps réel du casque via Bluetooth.">
+  <meta name="theme-color" content="#0e1712">
+  <title>Capiq</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand"><span class="brand-dot"></span> Capiq</div>
+  <div class="status-pill" id="connection-pill" data-state="off">Déconnecté</div>
+</header>
+
+<main class="container">
+
+  <!-- ================= VUE GUIDAGE ================= -->
+  <section id="view-guidage" class="view active">
+
+    <div class="banner warn hidden" id="bt-unsupported">
+      ⚠️ Web Bluetooth n'est pas disponible dans ce navigateur.
+      Utilisez <strong>Chrome sur Android</strong> (iOS n'est pas supporté).
+    </div>
+    <div class="banner info hidden" id="offline-banner">
+      📴 Hors ligne — l'application reste pleinement fonctionnelle.
+    </div>
+
+    <button id="btn-connect" class="btn btn-secondary btn-block">🔗 Se connecter au casque</button>
+
+    <div class="card compass-card">
+      <svg id="compass-dial" viewBox="0 0 200 200" role="img"
+           aria-label="Cadran boussole : cap actuel et azimut cible"></svg>
+      <div id="direction-banner" class="direction-banner muted">
+        Choisissez un azimut cible puis envoyez-le au casque.
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-value" id="stat-heading">--</div>
+        <div class="stat-label">Cap actuel</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value accent" id="stat-target">--</div>
+        <div class="stat-label">Cible</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="stat-error">--</div>
+        <div class="stat-label">Erreur</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <label class="field-label" for="target-number">Azimut cible</label>
+      <div class="target-row">
+        <input type="number" id="target-number" inputmode="decimal"
+               min="0" max="360" step="0.5" value="0">
+        <span class="unit">°</span>
+        <div class="cardinal-hints">
+          <button class="chip" data-az="0">N</button>
+          <button class="chip" data-az="90">E</button>
+          <button class="chip" data-az="180">S</button>
+          <button class="chip" data-az="270">O</button>
+        </div>
+      </div>
+      <input type="range" id="target-slider" min="0" max="359" step="1" value="0"
+             aria-label="Curseur azimut cible">
+      <button id="send-target" class="btn btn-primary btn-block" disabled>
+        ENVOYER AU CASQUE
+      </button>
+    </div>
+
+    <div class="meta-row">
+      <span id="battery-meta">🔋 --</span>
+      <span id="signal-meta">📶 —</span>
+      <span id="mode-meta">Mode : —</span>
+    </div>
+
+  </section>
+
+  <!-- ================= VUE RÉGLAGES ================= -->
+  <section id="view-reglages" class="view">
+
+    <div class="card">
+      <h2>Guidage LED</h2>
+      <div class="setting">
+        <label for="set-deadzone">Zone morte (aligné) <output id="val-deadzone">±2°</output></label>
+        <input type="range" id="set-deadzone" min="0" max="10" step="0.5" value="2">
+      </div>
+      <div class="setting">
+        <label for="set-brightness">Luminosité <output id="val-brightness">60 %</output></label>
+        <input type="range" id="set-brightness" min="0" max="100" step="5" value="60">
+      </div>
+      <div class="setting">
+        <label for="set-rate">Rafraîchissement <output id="val-rate">5 Hz</output></label>
+        <input type="range" id="set-rate" min="1" max="10" step="1" value="5">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Orientation</h2>
+      <div class="setting">
+        <label for="set-offset">Offset azimut (correction de montage)</label>
+        <div class="target-row">
+          <input type="number" id="set-offset" inputmode="decimal"
+                 min="-180" max="180" step="0.5" value="0">
+          <span class="unit">°</span>
+        </div>
+        <p class="hint">Ajoutez une correction fixe si le cap affiché est décalé
+        par rapport à une boussole de référence.</p>
+      </div>
+      <button id="btn-apply-settings" class="btn btn-primary btn-block" disabled>
+        Appliquer au casque
+      </button>
+      <p class="hint">Les réglages sont sauvegardés sur le téléphone et renvoyés
+      automatiquement au casque à chaque connexion.</p>
+    </div>
+
+    <div class="card">
+      <h2>Calibration du capteur</h2>
+      <button id="btn-cal-imu" class="btn btn-secondary btn-block" disabled>
+        Calibrer gyroscope (casque immobile, ~5 s)
+      </button>
+      <button id="btn-cal-mag" class="btn btn-secondary btn-block" disabled>
+        Calibrer boussole (dessiner des 8, ~20 s)
+      </button>
+      <p class="hint" id="cal-status">Connectez-vous au casque pour lancer une calibration.
+      À faire au premier montage, puis à chaque changement de position des composants
+      sur la casquette. S'éloigner de tout métal (véhicule, scie).</p>
+    </div>
+
+    <div class="card">
+      <h2>À propos</h2>
+      <p class="hint">Application : <span id="about-app">0.1.0</span><br>
+      Firmware casque : <span id="about-fw">—</span></p>
+      <button id="btn-install" class="btn btn-secondary btn-block hidden">
+        📲 Installer sur l'écran d'accueil
+      </button>
+    </div>
+
+  </section>
+</main>
+
+<nav class="tabbar">
+  <button class="tab active" data-view="guidage">🧭 Guidage</button>
+  <button class="tab" data-view="reglages">⚙️ Réglages</button>
+</nav>
+
+<div id="toast" class="toast hidden" role="status"></div>
+
+<noscript><p class="banner warn">Capiq nécessite JavaScript.</p></noscript>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
