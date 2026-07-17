@@ -1,5 +1,9 @@
 # Capiq — Prototype V0.1
 
+[![Deploy Webapp to GitHub Pages](https://github.com/PieroBarrette/CapIQ/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/PieroBarrette/CapIQ/actions/workflows/deploy-pages.yml)
+
+Demo webapp (GitHub Pages): https://pierobarrette.github.io/CapIQ/
+
 Système de guidage directionnel pour casque forestier : l'utilisateur choisit un
 azimut cible sur son téléphone, le casque (ESP32 + IMU + bande LED) indique en
 temps réel dans quelle direction tourner la tête pour suivre ce cap.
