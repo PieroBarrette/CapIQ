@@ -59,7 +59,7 @@ void LEDManager::render(uint32_t frame) {
 
   // Flash prioritaire (accusé de réception)
   if (millis() < flashUntil) {
-    for (int i = 0; i < (int)LED_COUNT; i++) setPix(i, fr, fg, fb, fw, 0.6f);
+    setPix((int)LED_CENTER_INDEX, fr, fg, fb, fw, 0.6f);
     return;
   }
 
@@ -84,21 +84,16 @@ void LEDManager::render(uint32_t frame) {
 // ---- Rendus par mode -------------------------------------------------
 
 void LEDManager::renderBoot(uint32_t frame) {
-  // Balayage vert progressif, faible intensité
-  const int lit = min<int>(frame / 2, LED_COUNT);
-  for (int i = 0; i < lit; i++) setPix(i, 0, 180, 30, 0, 0.5f);
+  // Un seul point vert en balayage.
+  const int idx = (frame / 2) % LED_COUNT;
+  setPix(idx, 0, 180, 30, 0, 0.5f);
 }
 
 void LEDManager::renderConnection(uint32_t frame) {
-  // Respiration blanche centrée (canal W du RGBW), période ~2.6 s
+  // Respiration blanche sur la LED centrale uniquement.
   const float breath = (sinf(frame * 0.08f) + 1.0f) * 0.5f;  // 0..1
-  const float center = (LED_COUNT - 1) / 2.0f;
-  for (int i = 0; i < (int)LED_COUNT; i++) {
-    const float d = fabsf(i - center) / center;               // 0 centre → 1 bord
-    const float falloff = expf(-3.0f * d * d);
-    const float inten = (0.15f + 0.85f * breath) * falloff;
-    setPix(i, 0, 0, 40, 160, inten);
-  }
+  const float inten = 0.15f + 0.85f * breath;
+  setPix((int)LED_CENTER_INDEX, 0, 0, 40, 160, inten);
 }
 
 void LEDManager::renderDirection(uint32_t frame) {
@@ -107,18 +102,12 @@ void LEDManager::renderDirection(uint32_t frame) {
   const float deadzone = deadzone_;
   portEXIT_CRITICAL(&mux_);
 
-  const float center = (LED_COUNT - 1) / 2.0f;
-
-  // Repère central discret (toujours visible) : aide à viser la LED du milieu
-  setPix((int)roundf(center), 0, 0, 0, 18);
+  const int center = (int)LED_CENTER_INDEX;
 
   if (fabsf(error) <= deadzone) {
-    // ALIGNÉ : centre vert + voisins en respiration douce
+    // ALIGNÉ : centre vert en respiration douce.
     const float breath = 0.35f + 0.25f * (sinf(frame * 0.15f) + 1.0f) * 0.5f;
-    const int c = (int)roundf(center);
-    setPix(c, 0, 255, 40, 0);
-    setPix(c - 1, 0, 255, 40, 0, breath);
-    setPix(c + 1, 0, 255, 40, 0, breath);
+    setPix(center, 0, 255, 40, 0, breath);
     return;
   }
 
@@ -134,29 +123,24 @@ void LEDManager::renderDirection(uint32_t frame) {
     return;
   }
 
-  // Position sous-pixel : l'indicateur glisse continûment sur la bande
-  float pos = center + (error / DIRECTION_FULLSCALE_DEG) * center;
+  // Position quantifiée : un seul pixel allumé selon l'erreur.
+  const float halfSpan = (float)max(1, center);
+  float pos = center + (error / DIRECTION_FULLSCALE_DEG) * halfSpan;
   pos = constrain(pos, 0.0f, (float)(LED_COUNT - 1));
-  const int   i0 = (int)floorf(pos);
-  const float f  = pos - i0;
-  setPix(i0, r, g, 0, 0, 1.0f - f);
-  if (i0 + 1 < (int)LED_COUNT) setPix(i0 + 1, r, g, 0, 0, f);
+  const int idx = (int)roundf(pos);
+  setPix(idx, r, g, 0, 0);
 }
 
 void LEDManager::renderCalibration(uint32_t frame) {
-  // Point bleu tournant avec traînée : "bougez la tête en 8"
-  const int head = (frame / 2) % LED_COUNT;
-  for (int k = 0; k < 4; k++) {
-    const int idx = (head - k + LED_COUNT) % LED_COUNT;
-    const float inten = 1.0f / (1 + k * 2);
-    setPix(idx, 0, 60, 255, 0, inten);
-  }
+  // Point bleu tournant unique : "bougez la tête en 8".
+  const int idx = (frame / 2) % LED_COUNT;
+  setPix(idx, 0, 60, 255, 0);
 }
 
 void LEDManager::renderError(uint32_t frame) {
-  // Clignotement rouge 1 Hz sur toute la bande
+  // Clignotement rouge 1 Hz sur la LED centrale uniquement.
   if ((frame % (LED_FRAME_HZ)) < (LED_FRAME_HZ / 2)) {
-    for (int i = 0; i < (int)LED_COUNT; i++) setPix(i, 160, 0, 0, 0);
+    setPix((int)LED_CENTER_INDEX, 160, 0, 0, 0);
   }
 }
 

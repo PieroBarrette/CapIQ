@@ -54,13 +54,15 @@ constexpr float HEADING_SMOOTHING_ALPHA = 0.25f;
 // ------------------------------------------------------------
 // LED SK6812 RGBW
 // ------------------------------------------------------------
-constexpr uint16_t LED_COUNT    = 15;    // segment utilisé sur la palette (144/m → ~10 cm)
+constexpr uint16_t LED_COUNT    = 22;    // bande utilisée
+// LED centrale demandée: 11e LED (index logique 10 en base 0).
+constexpr uint16_t LED_CENTER_INDEX = 10;
 constexpr bool     LED_REVERSED = false; // true si l'index 0 est à DROITE du porteur
 
 // Plafond de courant : à pleine blancheur, chaque SK6812 RGBW tire ~80 mA.
 // 15 LED × 80 mA = 1.2 A — trop pour l'USB. Le plafond logiciel limite la
-// luminosité maximale réelle (160/255 ≈ 63 %), et le mode direction n'allume
-// que quelques LED à la fois. NE PAS augmenter sans alimentation dédiée.
+// luminosité maximale réelle (160/255 ≈ 63 %), et le firmware n'allume
+// qu'une seule LED à la fois. NE PAS augmenter sans alimentation dédiée.
 constexpr uint8_t  LED_MAX_BRIGHTNESS = 160;
 constexpr uint8_t  LED_DEFAULT_BRIGHTNESS_PCT = 60; // % — réglable par l'app
 constexpr uint16_t LED_FRAME_HZ = 30;               // fréquence de rendu
