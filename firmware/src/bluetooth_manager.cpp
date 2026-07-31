@@ -117,8 +117,11 @@ bool BluetoothManager::begin(const char* deviceName) {
   battSvc->start();
 
   NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+  // Web Bluetooth est plus fiable quand le nom complet est dans le paquet
+  // d'advertising principal (pas uniquement en scan response).
+  adv->setName(deviceName);
   adv->addServiceUUID(CAPIQ_SERVICE_UUID);
-  adv->setScanResponse(true);  // le nom "Capiq" part dans la scan response
+  adv->setScanResponse(false);
   adv->start();
 
   Serial.printf("[BLE] Serveur '%s' demarre, publicite active\n", deviceName);
