@@ -109,6 +109,10 @@ body {
 }
 .banner.warn { background: rgba(255, 176, 32, 0.12); border: 1px solid rgba(255, 176, 32, 0.4); }
 .banner.info { background: rgba(147, 166, 154, 0.1); border: 1px solid var(--border); color: var(--muted); }
+.banner.err  { background: rgba(255, 82, 82, 0.12); border: 1px solid rgba(255, 82, 82, 0.45); }
+
+.banner.err strong { display: block; margin-bottom: 6px; color: var(--err); }
+.banner.err p { margin-bottom: 12px; }
 
 /* ---------- Boussole ---------- */
 .compass-card { align-items: center; }

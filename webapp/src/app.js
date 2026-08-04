@@ -4,7 +4,7 @@
    au stockage local et au service worker.
    ============================================================ */
 
-import { BLEService } from './ble_service.js';
+import { BLEService, describeBleError } from './ble_service.js';
 import * as storage from './storage_service.js';
 import { wrap180, normalize360, NavigationService, calculateDistance, calculateBearing } from './navigation_service.js';
 import { Waypoint } from '../models/navigation_model.js';
@@ -296,27 +296,49 @@ function setConnectedUI(connected, name = '') {
 
 /* ---------- Connexion ---------- */
 
+function showConnectError(info) {
+  const box = $('connect-error');
+  if (!info) {
+    box.classList.add('hidden');
+    return;
+  }
+  $('connect-error-title').textContent = info.title;
+  $('connect-error-advice').textContent = info.advice;
+  box.classList.remove('hidden');
+}
+
+async function startConnection({ allDevices = false } = {}) {
+  const pill = $('connection-pill');
+  pill.dataset.state = 'wait';
+  pill.textContent = 'Connexion…';
+  $('btn-connect').disabled = true;
+  showConnectError(null);
+  try {
+    await ble.connect({ allDevices });
+  } catch (err) {
+    pill.dataset.state = 'off';
+    pill.textContent = 'Déconnecté';
+    // Toute erreur autre qu'une annulation est affichée EN CLAIR et de façon
+    // persistante : un toast fugace laissait l'utilisateur sans explication.
+    const info = describeBleError(err);
+    if (!info.cancelled) showConnectError(info);
+    console.warn('[BLE] échec de connexion :', err);
+  } finally {
+    $('btn-connect').disabled = false;
+  }
+}
+
 async function toggleConnection() {
   if (state.connected) {
     ble.disconnect();
     return;
   }
-  const pill = $('connection-pill');
-  pill.dataset.state = 'wait';
-  pill.textContent = 'Connexion…';
-  try {
-    await ble.connect();
-  } catch (err) {
-    pill.dataset.state = 'off';
-    pill.textContent = 'Déconnecté';
-    if (err.name !== 'NotFoundError') { // NotFoundError = sélection annulée
-      toast(`Connexion impossible : ${err.message}`, 4000);
-    }
-  }
+  await startConnection();
 }
 
 async function onConnected(name) {
   setConnectedUI(true, name);
+  showConnectError(null);
   toast(`✓ Connecté à ${name}`);
   // L'app est la source de vérité des réglages : push automatique
   try {
@@ -428,6 +450,7 @@ function bindUI() {
 
   $('send-target').addEventListener('click', sendTarget);
   $('btn-connect').addEventListener('click', toggleConnection);
+  $('btn-connect-all').addEventListener('click', () => startConnection({ allDevices: true }));
 
   // Onglets
   document.querySelectorAll('.tab').forEach((tab) => {

@@ -56,18 +56,37 @@ export class BLEService extends EventTarget {
     return this.device ? (this.device.name || 'Capiq') : null;
   }
 
-  async connect() {
+  /**
+   * Ouvre le sélecteur d'appareils puis se connecte.
+   * @param {object} [opts]
+   * @param {boolean} [opts.allDevices] true = lister TOUS les appareils BLE
+   *   au lieu de filtrer sur Capiq. Dépannage : utile si le casque n'apparaît
+   *   pas dans la liste filtrée (nom modifié, publicité incomplète…).
+   */
+  async connect({ allDevices = false } = {}) {
     if (!BLEService.isSupported()) {
       throw new Error('Web Bluetooth non disponible (utilisez Chrome sur Android).');
     }
 
-    this.device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [CAPIQ_BLE.service] }, { namePrefix: 'Capiq' }],
-      optionalServices: [CAPIQ_BLE.service, 'battery_service'],
-    });
+    // `optionalServices` est obligatoire : sans lui, Chrome refuse l'accès aux
+    // services après connexion, même si l'appareil a été choisi par son nom.
+    const optionalServices = [CAPIQ_BLE.service, 'battery_service'];
+    this.device = await navigator.bluetooth.requestDevice(
+      allDevices
+        ? { acceptAllDevices: true, optionalServices }
+        : {
+            // namePrefix est SENSIBLE À LA CASSE : on couvre les deux graphies.
+            filters: [
+              { services: [CAPIQ_BLE.service] },
+              { namePrefix: 'Capiq' },
+              { namePrefix: 'CapIQ' },
+            ],
+            optionalServices,
+          }
+    );
     this.device.addEventListener('gattserverdisconnected', this._onDisconnected);
 
-    const gatt = await this.device.gatt.connect();
+    const gatt = await this._connectGattWithRetry();
     const svc = await gatt.getPrimaryService(CAPIQ_BLE.service);
 
     this.chTarget    = await svc.getCharacteristic(CAPIQ_BLE.target);
@@ -132,6 +151,27 @@ export class BLEService extends EventTarget {
 
   // ---- interne ----------------------------------------------------------
 
+  /**
+   * Ouvre le lien GATT avec réessais.
+   * Sur Android, la toute première tentative échoue très souvent
+   * (« GATT operation failed », « Connection failed ») alors que la seconde
+   * passe : la pile Bluetooth doit d'abord libérer le lien de scan.
+   */
+  async _connectGattWithRetry(attempts = 3) {
+    let lastError;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await this.device.gatt.connect();
+      } catch (err) {
+        lastError = err;
+        try { this.device.gatt.disconnect(); } catch { /* déjà fermé */ }
+        // Pause croissante : 500 ms, puis 1 s.
+        await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+      }
+    }
+    throw lastError;
+  }
+
   async _subscribeJSON(characteristic, eventName) {
     await characteristic.startNotifications();
     characteristic.addEventListener('characteristicvaluechanged', (e) => {
@@ -163,4 +203,66 @@ export class BLEService extends EventTarget {
   _emit(name, detail) {
     this.dispatchEvent(new CustomEvent(name, { detail }));
   }
+}
+
+/* ============================================================
+   Traduction des erreurs Web Bluetooth en consignes actionnables.
+   Retourne { cancelled } si l'utilisateur a simplement fermé le
+   sélecteur, sinon { title, advice }.
+   ============================================================ */
+export function describeBleError(err) {
+  const name = err && err.name ? err.name : '';
+  const msg = (err && err.message) || String(err);
+
+  // Sélecteur fermé sans choisir : ce n'est pas une erreur.
+  if (name === 'NotFoundError' && /cancel|annul/i.test(msg)) {
+    return { cancelled: true };
+  }
+
+  if (name === 'NotFoundError' && /No Services matching|Origin is not allowed/i.test(msg)) {
+    return {
+      title: 'Service Capiq introuvable sur le casque',
+      advice: 'Chrome garde en mémoire les services de la dernière version du '
+            + 'firmware. Dans les réglages Bluetooth Android, choisissez '
+            + '« Oublier » pour Capiq, désactivez puis réactivez le Bluetooth, '
+            + 'et réessayez.',
+    };
+  }
+
+  if (name === 'NotFoundError') {
+    return {
+      title: 'Casque introuvable',
+      advice: 'Vérifiez que le casque est allumé et qu\'aucun autre téléphone '
+            + 'n\'y est connecté. Si Capiq est « jumelé » dans les réglages '
+            + 'Bluetooth Android, choisissez « Oublier » : le jumelage n\'est '
+            + 'pas nécessaire et empêche la connexion.',
+    };
+  }
+
+  if (name === 'SecurityError') {
+    return {
+      title: 'Web Bluetooth bloqué',
+      advice: 'La page doit être servie en HTTPS (ou depuis localhost). '
+            + 'Ouvrez l\'application depuis son adresse https://.',
+    };
+  }
+
+  if (name === 'NotAllowedError') {
+    return {
+      title: 'Permission refusée',
+      advice: 'Autorisez « Appareils à proximité » pour Chrome dans les '
+            + 'paramètres Android, puis réessayez.',
+    };
+  }
+
+  if (name === 'NetworkError' || /GATT|Connection failed/i.test(msg)) {
+    return {
+      title: 'Connexion au casque interrompue',
+      advice: 'Le casque a refusé la liaison. Oubliez Capiq dans les réglages '
+            + 'Bluetooth Android (aucun jumelage n\'est requis), redémarrez le '
+            + 'casque, puis réessayez.',
+    };
+  }
+
+  return { title: 'Connexion impossible', advice: msg };
 }

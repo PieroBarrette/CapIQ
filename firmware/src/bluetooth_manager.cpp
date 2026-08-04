@@ -22,12 +22,35 @@ char          commandBuf[256] = {0};
 uint8_t lastBattery = 255;  // force la première mise à jour
 
 class ServerCallbacks : public NimBLEServerCallbacks {
-  void onConnect(NimBLEServer*) override {
-    Serial.println(F("[BLE] Client connecte"));
+  // NimBLE n'appelle PAS startAdvertising() apres une connexion reussie : le
+  // casque devient donc invisible des qu'un lien existe. Or Android ouvre son
+  // propre lien des qu'on "jumelle" le casque dans les reglages systeme —
+  // resultat, le selecteur d'appareils de Chrome ne trouve plus rien et la PWA
+  // ne peut plus se connecter. On republie donc immediatement (jusqu'a
+  // CONFIG_BT_NIMBLE_MAX_CONNECTIONS = 3 liens simultanes).
+  void onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) override {
+    Serial.printf("[BLE] Client connecte : %s (liens actifs : %u)\n",
+                  NimBLEAddress(desc->peer_ota_addr).toString().c_str(),
+                  (unsigned)pServer->getConnectedCount());
+    // Intervalle 15-30 ms : telemetrie fluide, timeout 2 s.
+    pServer->updateConnParams(desc->conn_handle, 12, 24, 0, 200);
+    if (pServer->getConnectedCount() < CONFIG_BT_NIMBLE_MAX_CONNECTIONS) {
+      NimBLEDevice::startAdvertising();
+      Serial.println(F("[BLE] Publicite maintenue (casque toujours visible)"));
+    } else {
+      Serial.println(F("[BLE] Liens max atteints — publicite suspendue"));
+    }
   }
-  void onDisconnect(NimBLEServer*) override {
-    Serial.println(F("[BLE] Client deconnecte — reprise de la publicite"));
+
+  void onDisconnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) override {
+    Serial.printf("[BLE] Client deconnecte : %s (liens restants : %u)\n",
+                  NimBLEAddress(desc->peer_ota_addr).toString().c_str(),
+                  (unsigned)pServer->getConnectedCount());
     NimBLEDevice::startAdvertising();
+  }
+
+  void onMTUChange(uint16_t mtu, ble_gap_conn_desc*) override {
+    Serial.printf("[BLE] MTU negocie : %u octets\n", mtu);
   }
 };
 
@@ -83,6 +106,28 @@ bool BluetoothManager::begin(const char* deviceName) {
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);  // +9 dBm : portée maximale en forêt
   NimBLEDevice::setMTU(247);               // la télémétrie JSON dépasse les 23 octets par défaut
 
+  // ----------------------------------------------------------------
+  // Sécurité : AUCUNE. Capiq n'échange ni identifiants ni données
+  // sensibles ; Web Bluetooth n'a besoin d'aucun appairage.
+  //
+  // Pourquoi c'est important : si l'utilisateur « jumelle » le casque
+  // depuis les réglages Android, un lien chiffré (bond) est créé des
+  // deux côtés. Au reflashage du firmware, la clé côté ESP32 disparaît
+  // alors que le téléphone garde la sienne → toute connexion ultérieure
+  // échoue au chiffrement, y compris depuis la PWA. En refusant le
+  // bonding, ce blocage devient impossible.
+  // ----------------------------------------------------------------
+  NimBLEDevice::setSecurityAuth(false, false, false);  // pas de bonding/MITM/SC
+  NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
+
+  // Purge des appairages hérités d'un firmware précédent (voir ci-dessus).
+  const int bonds = NimBLEDevice::getNumBonds();
+  if (bonds > 0) {
+    NimBLEDevice::deleteAllBonds();
+    Serial.printf("[BLE] %d appairage(s) obsolete(s) efface(s) — pensez a "
+                  "\"oublier\" Capiq dans les reglages Bluetooth du telephone\n", bonds);
+  }
+
   server = NimBLEDevice::createServer();
   server->setCallbacks(new ServerCallbacks());
 
@@ -119,13 +164,30 @@ bool BluetoothManager::begin(const char* deviceName) {
   NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
   // Web Bluetooth est plus fiable quand le nom complet est dans le paquet
   // d'advertising principal (pas uniquement en scan response).
+  // Budget : 3 (flags) + 18 (UUID 128 bits) + 2 + strlen(nom) <= 31 octets,
+  // soit 8 caracteres maximum pour le nom. Au-dela, NimBLE le tronque.
   adv->setName(deviceName);
   adv->addServiceUUID(CAPIQ_SERVICE_UUID);
   adv->setScanResponse(false);
-  adv->start();
 
-  Serial.printf("[BLE] Serveur '%s' demarre, publicite active\n", deviceName);
+  if (!adv->start()) {
+    Serial.println(F("[BLE] ECHEC du demarrage de la publicite !"));
+    return false;
+  }
+
+  Serial.printf("[BLE] Serveur '%s' demarre, publicite active (sans appairage)\n", deviceName);
   return true;
+}
+
+void BluetoothManager::forgetBonds() {
+  const int n = NimBLEDevice::getNumBonds();
+  NimBLEDevice::deleteAllBonds();
+  Serial.printf("[BLE] %d appairage(s) efface(s) cote casque.\n", n);
+}
+
+void BluetoothManager::restartAdvertising() {
+  NimBLEDevice::startAdvertising();
+  Serial.println(F("[BLE] Publicite relancee."));
 }
 
 bool BluetoothManager::isConnected() const {

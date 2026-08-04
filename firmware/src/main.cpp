@@ -182,6 +182,8 @@ static void printHelp() {
   Serial.println(F("r        effacer la calibration"));
   Serial.println(F("b <pct>  luminosite LED 0-100"));
   Serial.println(F("i        infos systeme (JSON statut)"));
+  Serial.println(F("x        effacer les appairages BLE (depannage connexion)"));
+  Serial.println(F("a        relancer la publicite BLE (depannage connexion)"));
   Serial.println(F("h        cette aide"));
 }
 
@@ -206,6 +208,8 @@ static void processSerialCommand(String line) {
       Serial.printf("Luminosite: %d %%\n", settings.brightnessPct);
       break;
     case 'i': Serial.println(buildStatusJson()); break;
+    case 'x': ble.forgetBonds(); break;
+    case 'a': ble.restartAdvertising(); break;
     default: printHelp(); break;
   }
 }

@@ -22,6 +22,11 @@ Android (Chrome) + PC pour le moniteur série.
 | 1.5 | Déconnexion | Éteindre le BT du téléphone | App : « Déconnecté » ; casque : flash orange puis **guidage LED conservé** |
 | 1.6 | Reconnexion | Réactiver BT → Se connecter | Reprise en < 10 s, réglages re-poussés automatiquement |
 | 1.7 | Persistance cible | Débrancher/rebrancher le casque | Le guidage reprend sur la dernière cible sans téléphone |
+| 1.8 | **Visibilité maintenue** | Connecter l'app, puis lancer un scan avec nRF Connect | « Capiq » **toujours visible** ; série : `Publicite maintenue` |
+| 1.9 | **Résistance au jumelage** | Jumeler Capiq dans les réglages Android, puis se connecter depuis la PWA | La PWA se connecte quand même (le casque publie toujours) |
+| 1.10 | **Appairage purgé** | Redémarrer le casque après un jumelage | Série : `appairage(s) obsolete(s) efface(s)` |
+| 1.11 | **Erreur explicite** | Éteindre le casque, tenter *Se connecter*, fermer le sélecteur puis réessayer | Panneau rouge persistant avec cause + marche à suivre (pas un simple toast) |
+| 1.12 | **Repli tous appareils** | *Afficher tous les appareils Bluetooth* | Le sélecteur liste tous les appareils BLE environnants |
 
 ## 2. Hors ligne (PWA)
 

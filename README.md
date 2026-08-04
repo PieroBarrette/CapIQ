@@ -146,14 +146,25 @@ visite, l'application fonctionne **sans aucune connexion internet**.
 3. L'app s'ouvre alors plein écran, icône Capiq, sans barre d'adresse.
 
 ### Activer le Bluetooth
+
+> ⛔ **NE JAMAIS « jumeler » Capiq depuis les réglages Bluetooth d'Android.**
+> Le casque n'utilise aucun appairage. Un jumelage ouvre une liaison système
+> permanente qui rend le casque invisible dans le sélecteur de Chrome, et crée
+> une clé de chiffrement qui devient invalide au reflashage du firmware.
+> Si « Capiq » figure déjà dans vos appareils jumelés : **Oublier**.
+
 1. Android : activer le **Bluetooth** (et la **Localisation** sur Android ≤ 11 —
    exigence Android pour le scan BLE ; permission « Appareils à proximité » sur
    Android 12+).
 2. Dans Capiq : **Se connecter au casque** → choisir « Capiq » dans le
-   sélecteur Chrome.
+   sélecteur Chrome. Ne rien faire d'autre : pas de code, pas de jumelage.
 3. La connexion est mémorisée par le casque ; en cas de coupure, refaire
    *Se connecter*. Le casque continue de guider seul avec la dernière cible
    même téléphone éteint.
+
+**Si la connexion échoue**, l'application affiche désormais la cause et la
+marche à suivre. Voir aussi l'onglet *Réglages → Dépannage Bluetooth*, et
+[docs/PROTOCOLE_BLE.md](docs/PROTOCOLE_BLE.md#dépannage-de-la-connexion).
 
 ⚠️ **iOS/Safari ne supporte pas Web Bluetooth** : Android requis pour la V0.1.
 

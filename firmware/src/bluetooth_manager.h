@@ -54,4 +54,11 @@ public:
 
   // Met à jour le niveau de batterie (service standard 0x180F).
   void setBatteryLevel(uint8_t percent);
+
+  // Efface les appairages (bonds) mémorisés côté casque. Utile si un
+  // « jumelage » Android a laissé une clé périmée qui bloque la connexion.
+  void forgetBonds();
+
+  // Force une reprise de la publicité (dépannage : casque introuvable).
+  void restartAdvertising();
 };

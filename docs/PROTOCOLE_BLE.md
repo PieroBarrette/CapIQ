@@ -1,7 +1,11 @@
 # Capiq V0.1 — Protocole Bluetooth Low Energy
 
 Nom annoncé : **`Capiq`** · MTU préféré : 247 · Puissance TX : +9 dBm
-Appairage : aucun (connexion ouverte — prototype).
+**Appairage : aucun, et volontairement refusé** (`setSecurityAuth(false,false,false)`).
+
+Le paquet de publicité contient les drapeaux (3 o), l'UUID de service 128 bits
+(18 o) et le nom complet (2 + n o) — pas de scan response. Budget 31 octets :
+**le nom du casque ne doit pas dépasser 8 caractères**, sinon NimBLE le tronque.
 
 ## Services et caractéristiques
 
@@ -61,6 +65,44 @@ Valeur normalisée 0-360, persistée en NVS (le casque garde sa cible après reb
 - Les champs JSON inconnus sont ignorés des deux côtés → les évolutions
   (GPS, waypoints, logs) restent rétro-compatibles ; UUID `ca910005+`
   réservés aux futures caractéristiques.
+
+## Dépannage de la connexion
+
+### Pourquoi il ne faut pas « jumeler » le casque
+NimBLE **arrête la publicité dès qu'une liaison est établie** et ne la reprend
+qu'à la déconnexion. Si l'utilisateur jumelle Capiq depuis les réglages
+Bluetooth d'Android, le système ouvre et **conserve** cette liaison : le casque
+disparaît alors du sélecteur d'appareils de Chrome et la PWA ne peut plus s'y
+connecter. Le jumelage crée en outre une clé (bond) que le reflashage du
+firmware invalide côté ESP32, ce qui bloque ensuite **toute** connexion.
+
+Deux garde-fous sont en place depuis la V0.1 :
+1. `onConnect` **relance immédiatement la publicité** tant que le nombre de
+   liaisons reste sous la limite NimBLE (3) — le casque reste donc toujours
+   visible, même si Android en occupe une.
+2. Le bonding est refusé (`setSecurityAuth(false,false,false)`) et les
+   appairages hérités sont **effacés au démarrage**.
+
+Côté téléphone, il reste nécessaire de choisir **Oublier** si Capiq a déjà été
+jumelé : Android ne renonce pas seul à sa clé.
+
+### Commandes série de dépannage
+| Touche | Effet |
+|---|---|
+| `x` | Efface les appairages mémorisés côté casque |
+| `a` | Relance la publicité (casque introuvable) |
+| `i` | Affiche le statut JSON complet |
+
+Le moniteur série trace chaque événement : adresse du pair, nombre de liaisons
+actives, MTU négocié, et confirme `Publicite maintenue (casque toujours visible)`.
+
+### Côté application
+- Le lien GATT est retenté **3 fois** (pauses 0,5 s puis 1 s) : la première
+  tentative échoue très souvent sur Android.
+- Les erreurs Web Bluetooth sont traduites en consignes concrètes et affichées
+  de façon **persistante** (elles étaient auparavant silencieuses).
+- Le bouton *Afficher tous les appareils Bluetooth* lève le filtre si le casque
+  n'apparaît pas dans la liste filtrée.
 
 ## Déboguer sans l'app
 [nRF Connect (Android)](https://play.google.com/store/apps/details?id=no.nordicsemi.android.mcp) :

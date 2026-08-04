@@ -6,7 +6,7 @@
    la mise à jour des fichiers.
    ============================================================ */
 
-const CACHE_NAME = 'capiq-v0.1.0';
+const CACHE_NAME = 'capiq-v0.1.1';
 
 const PRECACHE = [
   './',
@@ -25,7 +25,12 @@ const PRECACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE))
+      // `cache: 'reload'` court-circuite le cache HTTP du navigateur : sans lui,
+      // une nouvelle version du Service Worker pouvait re-mettre en cache les
+      // anciens fichiers servis par le cache HTTP.
+      .then((cache) => cache.addAll(
+        PRECACHE.map((url) => new Request(url, { cache: 'reload' }))
+      ))
       .then(() => self.skipWaiting())
   );
 });

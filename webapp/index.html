@@ -33,6 +33,14 @@
 
     <button id="btn-connect" class="btn btn-secondary btn-block">🔗 Se connecter au casque</button>
 
+    <div class="banner err hidden" id="connect-error">
+      <strong id="connect-error-title"></strong>
+      <p id="connect-error-advice"></p>
+      <button id="btn-connect-all" class="btn btn-secondary btn-block">
+        🔍 Afficher tous les appareils Bluetooth
+      </button>
+    </div>
+
     <div class="card compass-card">
       <svg id="compass-dial" viewBox="0 0 200 200" role="img"
            aria-label="Cadran boussole : cap actuel et azimut cible"></svg>
@@ -133,6 +141,24 @@
       <p class="hint" id="cal-status">Connectez-vous au casque pour lancer une calibration.
       À faire au premier montage, puis à chaque changement de position des composants
       sur la casquette. S'éloigner de tout métal (véhicule, scie).</p>
+    </div>
+
+    <div class="card">
+      <h2>Dépannage Bluetooth</h2>
+      <p class="hint">
+        <strong>Ne jumelez pas Capiq dans les réglages Bluetooth d'Android.</strong>
+        Le casque n'utilise aucun appairage : le jumelage occupe la liaison et
+        empêche l'application de s'y connecter. Si Capiq figure déjà dans la
+        liste des appareils jumelés, choisissez <em>Oublier</em>.
+      </p>
+      <p class="hint">
+        Connexion toujours impossible ? Dans l'ordre :<br>
+        1. désactiver puis réactiver le Bluetooth du téléphone ;<br>
+        2. redémarrer le casque (débrancher/rebrancher) ;<br>
+        3. utiliser <em>Afficher tous les appareils Bluetooth</em> sur l'écran
+        Guidage si « Capiq » n'apparaît pas dans la liste ;<br>
+        4. vérifier qu'aucun autre téléphone n'est déjà connecté au casque.
+      </p>
     </div>
 
     <div class="card">
