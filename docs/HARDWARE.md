@@ -83,6 +83,27 @@ ADC batterie = GPIO 4 (appliqué automatiquement par `config.h`).
   ESP32/batterie à l'arrière.
 - Refaire la **calibration boussole** après tout changement mécanique.
 
+## Dépannage : « Mode erreur capteur » (LED centrale rouge clignotante)
+
+La LED rouge signifie que `imu.begin()` a échoué. Branchez le casque en USB,
+ouvrez le moniteur série (115200) et lisez le **balayage I2C** affiché au
+démarrage — ou tapez **`s`** pour le relancer à chaud.
+
+| Ce que montre le balayage | Cause | Correctif |
+|---|---|---|
+| `AUCUN peripherique detecte` | Câblage, alimentation ou soudure | Vérifier VCC=3V3, GND **commun**, SDA=GPIO 21, SCL=GPIO 22 ; ressouder ; raccourcir les fils |
+| `0x69` mais pas `0x68` | AD0 tiré à 3,3 V | Rien à faire : l'adresse est détectée automatiquement depuis la V0.1 |
+| `0x68` **sans** `0x0C` | Module « GY-9250 » clone à base de **MPU-6500** (sans magnétomètre) | Le module ne convient pas : la librairie exige l'AK8963. Remplacer par un vrai MPU-9250, ou passer au **BNO085** déjà prévu dans la BOM |
+| `0x68` **et** `0x0C`, mais init refusée | WHO_AM_I inattendu, ou bus instable | Raccourcir les fils I2C ; passer `I2C_CLOCK_HZ` à `100000` dans `config.h` |
+| `0x0D` ou `0x1E` présent | Magnétomètre d'un autre type (QMC5883L/HMC5883L) | Incompatible avec la librairie MPU9250 |
+
+Le firmware affiche aussi la cause en clair (`[IMU] ECHEC : …`) et la remonte à
+l'application dans le champ `imuDiag` du statut BLE — l'onglet *Réglages*
+l'affiche sous la section Calibration.
+
+> Le BLE reste **entièrement fonctionnel** en mode erreur capteur : on peut se
+> connecter, régler et diagnostiquer le casque sans IMU opérationnelle.
+
 ## Alimentation batterie (V0.2 — prévu, non câblé)
 
 Options identifiées dans la BOM :

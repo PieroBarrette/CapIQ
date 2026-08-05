@@ -91,6 +91,7 @@ static String buildStatusJson() {
   doc["mode"]      = ledModeName(led.getMode());
   doc["imu"]       = imu.isHealthy();
   doc["mag"]       = imu.hasMagnetometer();
+  doc["imuDiag"]   = imu.getDiagnostic();  // cause exacte si imu == false
   doc["cal"]       = imu.isCalibrated();
   doc["rate"]      = roundf(imu.getMeasuredRateHz());
   doc["deadzone"]  = settings.deadzoneDeg;
@@ -184,6 +185,8 @@ static void printHelp() {
   Serial.println(F("i        infos systeme (JSON statut)"));
   Serial.println(F("x        effacer les appairages BLE (depannage connexion)"));
   Serial.println(F("a        relancer la publicite BLE (depannage connexion)"));
+  Serial.println(F("s        balayer le bus I2C (depannage capteur)"));
+  Serial.println(F("R        redemarrer l'ESP32"));
   Serial.println(F("h        cette aide"));
 }
 
@@ -210,6 +213,8 @@ static void processSerialCommand(String line) {
     case 'i': Serial.println(buildStatusJson()); break;
     case 'x': ble.forgetBonds(); break;
     case 'a': ble.restartAdvertising(); break;
+    case 's': imu.scanBus(); break;
+    case 'R': ESP.restart(); break;
     default: printHelp(); break;
   }
 }

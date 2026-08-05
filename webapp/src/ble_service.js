@@ -230,12 +230,21 @@ export function describeBleError(err) {
   }
 
   if (name === 'NotFoundError') {
+    const android = /Android/i.test(navigator.userAgent);
     return {
       title: 'Casque introuvable',
-      advice: 'Vérifiez que le casque est allumé et qu\'aucun autre téléphone '
-            + 'n\'y est connecté. Si Capiq est « jumelé » dans les réglages '
-            + 'Bluetooth Android, choisissez « Oublier » : le jumelage n\'est '
-            + 'pas nécessaire et empêche la connexion.',
+      advice: android
+        // Sur Android, une liste vide vient presque toujours du scan bloqué,
+        // pas du casque : Chrome a besoin de la Localisation et de la
+        // permission « Appareils à proximité » pour scanner en BLE.
+        ? 'Si la liste était vide : activez la Localisation (GPS) du téléphone '
+        + '— Android l\'exige pour le scan Bluetooth de Chrome — et autorisez '
+        + '« Appareils à proximité » pour Chrome. Vérifiez aussi que le casque '
+        + 'est allumé et qu\'il n\'est pas « jumelé » dans les réglages '
+        + 'Bluetooth (choisir Oublier). Réglages → Diagnostic Bluetooth donne '
+        + 'le détail.'
+        : 'Vérifiez que le casque est allumé et qu\'aucun autre appareil n\'y '
+        + 'est connecté.',
     };
   }
 

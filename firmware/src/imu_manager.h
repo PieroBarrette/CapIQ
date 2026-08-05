@@ -66,6 +66,18 @@ public:
   // Efface la calibration sauvegardée (prend effet au redémarrage).
   void clearCalibration();
 
+  // ---- Diagnostic matériel -------------------------------------------
+  // Balaye le bus I2C et journalise chaque adresse qui répond.
+  // Renvoie le nombre de périphériques trouvés. Utilisable à chaud.
+  int scanBus();
+
+  // Adresse I2C réellement utilisée (0x68 ou 0x69), 0 si aucune.
+  uint8_t getAddress() const;
+
+  // Résumé lisible de l'état matériel, remonté à l'app par le BLE.
+  // Ex. « OK 0x68 » / « Aucun peripherique I2C » / « MPU 0x68 sans magnetometre »
+  const char* getDiagnostic() const;
+
 private:
   bool loadCalibration();
   bool saveCalibration();
@@ -83,6 +95,9 @@ private:
   bool magOk_      = false;
   bool calGyroOk_  = false;
   bool calMagOk_   = false;
+
+  uint8_t address_ = 0;              // adresse I2C retenue (0 = aucune)
+  char    diagnostic_[64] = "non initialise";
 
   uint32_t sampleCount_     = 0;
   uint32_t rateWindowStart_ = 0;

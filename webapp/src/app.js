@@ -262,7 +262,10 @@ function handleStatus(st) {
 
   const cal = $('cal-status');
   if (st.imu === false) {
-    cal.textContent = '⚠️ IMU non détectée par le casque : vérifier le câblage.';
+    // imuDiag donne la cause exacte remontée par le casque (balayage I2C).
+    cal.textContent = `⚠️ Capteur non fonctionnel — ${st.imuDiag || 'cause inconnue'}. `
+                    + 'Branchez le casque en USB et tapez « s » dans le moniteur série '
+                    + 'pour le détail du bus I2C.';
   } else if (st.mag === false) {
     cal.textContent = '⚠️ Magnétomètre absent (module clone ?) — le cap dérivera.';
   } else if (st.cal === false) {
@@ -393,6 +396,78 @@ function bindSettings() {
   });
 }
 
+/* ---------- Diagnostic Bluetooth ---------- */
+
+/**
+ * Rapport d'environnement lisible sur le téléphone lui-même.
+ * Cible les causes propres à Android, invisibles depuis un PC :
+ * adaptateur indisponible, permission « Appareils à proximité » refusée,
+ * Localisation désactivée, contexte non sécurisé.
+ */
+async function runBluetoothDiagnostics() {
+  const out = $('diag-output');
+  out.classList.remove('hidden');
+  out.textContent = 'Analyse en cours…';
+
+  const lines = [];
+  const mark = (ok, label, detail) =>
+    lines.push(`${ok ? '✅' : '❌'} ${label}${detail ? ' — ' + detail : ''}`);
+
+  mark(window.isSecureContext, 'Contexte sécurisé (HTTPS)',
+       window.location.origin);
+  mark(!!navigator.bluetooth, 'API Web Bluetooth présente');
+
+  if (navigator.bluetooth) {
+    // getAvailability() = false → pas d'adaptateur OU permission refusée.
+    // C'est le signal le plus utile côté Android.
+    let available = null;
+    try {
+      available = await navigator.bluetooth.getAvailability();
+    } catch (err) {
+      available = `erreur : ${err.message}`;
+    }
+    mark(available === true, 'Adaptateur Bluetooth disponible', String(available));
+
+    // État de la permission, quand le navigateur l'expose.
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        const st = await navigator.permissions.query({ name: 'bluetooth' });
+        mark(st.state !== 'denied', 'Permission Bluetooth', st.state);
+      } catch {
+        lines.push('•  Permission Bluetooth — non interrogeable (normal sur Chrome)');
+      }
+    }
+
+    // Appareils déjà autorisés pour cette origine (Chrome Android surtout).
+    if (navigator.bluetooth.getDevices) {
+      try {
+        const devices = await navigator.bluetooth.getDevices();
+        lines.push(`•  Appareils déjà autorisés : ${devices.length
+          ? devices.map((d) => d.name || '(sans nom)').join(', ') : 'aucun'}`);
+      } catch { /* non supporté */ }
+    }
+  }
+
+  const standalone = window.matchMedia('(display-mode: standalone)').matches;
+  lines.push(`•  Mode d'affichage : ${standalone ? 'application installée' : 'onglet navigateur'}`);
+  lines.push(`•  Connexion réseau : ${navigator.onLine ? 'en ligne' : 'hors ligne'}`);
+  lines.push(`•  Version app : ${APP_VERSION}`);
+  lines.push(`•  Navigateur : ${navigator.userAgent}`);
+
+  const android = /Android/i.test(navigator.userAgent);
+  if (android) {
+    lines.push('');
+    lines.push('Si tout est ✅ mais que la liste du sélecteur reste vide :');
+    lines.push('  1. activer la Localisation (GPS) du téléphone — Android');
+    lines.push('     l\'exige pour le scan BLE de Chrome ;');
+    lines.push('  2. Paramètres → Applications → Chrome → Autorisations →');
+    lines.push('     activer « Appareils à proximité » ;');
+    lines.push('  3. oublier Capiq dans les réglages Bluetooth.');
+  }
+
+  out.textContent = lines.join('\n');
+}
+
 /* ---------- Calibration ---------- */
 
 function bindCalibration() {
@@ -463,6 +538,7 @@ function bindUI() {
 
   bindSettings();
   bindCalibration();
+  $('btn-diag').addEventListener('click', runBluetoothDiagnostics);
 }
 
 function bindBLE() {

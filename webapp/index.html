@@ -159,6 +159,18 @@
         Guidage si « Capiq » n'apparaît pas dans la liste ;<br>
         4. vérifier qu'aucun autre téléphone n'est déjà connecté au casque.
       </p>
+      <p class="hint">
+        <strong>Sur Android, si la liste du sélecteur reste vide</strong>, c'est
+        presque toujours l'un de ces deux points :<br>
+        • la <em>Localisation</em> (GPS) du téléphone est désactivée — Android
+        l'exige pour que Chrome puisse scanner en BLE, même sans usage du GPS ;<br>
+        • la permission <em>Appareils à proximité</em> est refusée à Chrome
+        (Paramètres → Applications → Chrome → Autorisations).
+      </p>
+      <button id="btn-diag" class="btn btn-secondary btn-block">
+        🩺 Lancer le diagnostic Bluetooth
+      </button>
+      <pre id="diag-output" class="diag hidden"></pre>
     </div>
 
     <div class="card">
