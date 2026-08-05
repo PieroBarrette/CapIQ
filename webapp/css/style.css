@@ -111,8 +111,12 @@ body {
 .banner.info { background: rgba(147, 166, 154, 0.1); border: 1px solid var(--border); color: var(--muted); }
 .banner.err  { background: rgba(255, 82, 82, 0.12); border: 1px solid rgba(255, 82, 82, 0.45); }
 
-.banner.err strong { display: block; margin-bottom: 6px; color: var(--err); }
-.banner.err p { margin-bottom: 12px; }
+.banner.err strong  { display: block; margin-bottom: 6px; color: var(--err); }
+.banner.warn strong { display: block; margin-bottom: 6px; color: var(--warn); }
+.banner.err p, .banner.warn p { margin-bottom: 12px; }
+
+/* Le bouton de recalage tient sur la ligne de saisie, sans l'écraser. */
+#relative-heading-notice .btn { min-height: 48px; padding: 0 16px; margin-left: auto; }
 
 /* ---------- Boussole ---------- */
 .compass-card { align-items: center; }

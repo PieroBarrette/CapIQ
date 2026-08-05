@@ -49,6 +49,21 @@
       </div>
     </div>
 
+    <div class="banner warn hidden" id="relative-heading-notice">
+      <strong>Cap relatif — capteur sans boussole</strong>
+      <p>Le module ne possède pas de magnétomètre : le cap affiché n'est
+      <em>pas</em> un azimut vrai et dérive d'environ 2° par minute.
+      Orientez-vous avec une boussole, indiquez le cap réel ci-dessous,
+      puis recalez.</p>
+      <div class="target-row">
+        <input type="number" id="align-heading" inputmode="decimal"
+               min="0" max="359" step="1" value="0"
+               aria-label="Cap réel mesuré à la boussole">
+        <span class="unit">°</span>
+        <button id="btn-align" class="btn btn-secondary" disabled>Recaler</button>
+      </div>
+    </div>
+
     <div class="stats-row">
       <div class="stat">
         <div class="stat-value" id="stat-heading">--</div>

@@ -93,7 +93,7 @@ démarrage — ou tapez **`s`** pour le relancer à chaud.
 |---|---|---|
 | `AUCUN peripherique detecte` | Câblage, alimentation ou soudure | Vérifier VCC=3V3, GND **commun**, SDA=GPIO 21, SCL=GPIO 22 ; ressouder ; raccourcir les fils |
 | `0x69` mais pas `0x68` | AD0 tiré à 3,3 V | Rien à faire : l'adresse est détectée automatiquement depuis la V0.1 |
-| `0x68` **sans** `0x0C` | Module « GY-9250 » clone à base de **MPU-6500** (sans magnétomètre) | Le module ne convient pas : la librairie exige l'AK8963. Remplacer par un vrai MPU-9250, ou passer au **BNO085** déjà prévu dans la BOM |
+| `0x68` **sans** `0x0C` | Module « GY-9250 » clone à base de **MPU-6500** (sans magnétomètre) | Le firmware bascule en **mode dégradé** (voir ci-dessous). Pour un vrai azimut : capteur à magnétomètre — **BNO085** de la BOM |
 | `0x68` **et** `0x0C`, mais init refusée | WHO_AM_I inattendu, ou bus instable | Raccourcir les fils I2C ; passer `I2C_CLOCK_HZ` à `100000` dans `config.h` |
 | `0x0D` ou `0x1E` présent | Magnétomètre d'un autre type (QMC5883L/HMC5883L) | Incompatible avec la librairie MPU9250 |
 
@@ -103,6 +103,45 @@ l'affiche sous la section Calibration.
 
 > Le BLE reste **entièrement fonctionnel** en mode erreur capteur : on peut se
 > connecter, régler et diagnostiquer le casque sans IMU opérationnelle.
+
+## Mode dégradé « gyroscope seul » (MPU-6500)
+
+### Comment reconnaître un faux MPU-9250
+Le registre `WHO_AM_I` (0x75) ne ment pas :
+
+| Valeur | Puce | Magnétomètre |
+|---|---|---|
+| `0x71` | MPU-9250 | ✅ AK8963 |
+| `0x73` | MPU-9255 | ✅ AK8963 |
+| `0x70` | **MPU-6500** | ❌ **aucun** |
+
+Beaucoup de modules vendus « GY-9250 » embarquent en réalité un MPU-6500.
+Le firmware l'affiche au démarrage et bascule automatiquement sur un pilote
+MPU-6500 minimal intégré (`imu_manager.cpp`, espace de noms `mpu6500`), au lieu
+de rester bloqué en mode erreur.
+
+### Ce que le mode dégradé fournit — et ce qu'il ne fournit pas
+
+| | État |
+|---|---|
+| Pitch / roll | ✅ **Stables**, référencés sur la gravité (filtre complémentaire, α = 0,98) |
+| Cadence | ✅ 200 Hz (attente du bit *data ready*) |
+| Cap | ⚠️ **RELATIF** : intégration du gyroscope Z, **aucune** référence absolue |
+| Dérive mesurée | ⚠️ **≈ 1,8 °/min** après calibration du biais (banc, capteur immobile) |
+
+Autrement dit : parfait pour valider la chaîne LED / BLE / PWA au banc,
+**inutilisable pour naviguer en forêt**. Après 30 minutes, le cap peut être
+faux de plus de 50°.
+
+### Utilisation
+1. **Calibrer le biais gyro** : commande série `g` (ou depuis l'app), capteur
+   **immobile** ~3 s. Sauvegardé en NVS.
+2. **Recaler le cap** aussi souvent que nécessaire : s'orienter à la boussole de
+   poche, puis `z 90` en série — ou, dans l'app, le bandeau orange *Cap relatif*
+   (saisir le cap réel, bouton **Recaler**).
+
+Le champ `absolute` du statut BLE vaut `false` dans ce mode : l'application
+affiche alors le bandeau d'avertissement et le contrôle de recalage.
 
 ## Alimentation batterie (V0.2 — prévu, non câblé)
 

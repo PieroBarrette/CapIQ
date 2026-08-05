@@ -149,6 +149,7 @@ const state = {
   target: storage.loadTarget(),      // number | null
   settings: storage.loadSettings(),
   connected: false,
+  absoluteHeading: true,   // false = cap relatif (gyroscope seul), dérive
   heading: null,
   error: null,
   battery: null,
@@ -260,6 +261,12 @@ function handleStatus(st) {
   $('about-fw').textContent = st.fw || '—';
   $('mode-meta').textContent = `Mode : ${MODE_LABELS[st.mode] || st.mode || '—'}`;
 
+  // absolute === false : cap issu du gyroscope seul, il dérive. Ne jamais
+  // laisser croire à un azimut vrai — on l'annonce et on offre le recalage.
+  state.absoluteHeading = st.absolute !== false;
+  $('relative-heading-notice').classList.toggle('hidden', state.absoluteHeading);
+  $('btn-align').disabled = !state.connected;
+
   const cal = $('cal-status');
   if (st.imu === false) {
     // imuDiag donne la cause exacte remontée par le casque (balayage I2C).
@@ -284,6 +291,7 @@ function setConnectedUI(connected, name = '') {
   $('btn-apply-settings').disabled = !connected;
   $('btn-cal-imu').disabled = !connected;
   $('btn-cal-mag').disabled = !connected;
+  $('btn-align').disabled = !connected;
   if (!connected) {
     state.heading = null;
     state.error = null;
@@ -554,6 +562,17 @@ function bindUI() {
   $('send-target').addEventListener('click', sendTarget);
   $('btn-connect').addEventListener('click', toggleConnection);
   $('btn-connect-all').addEventListener('click', () => startConnection({ allDevices: true }));
+
+  $('btn-align').addEventListener('click', async () => {
+    const deg = parseFloat($('align-heading').value);
+    if (!Number.isFinite(deg)) return;
+    try {
+      await ble.sendCommand({ cmd: 'align', heading: normalize360(deg) });
+      toast(`🧭 Cap recalé sur ${normalize360(deg)}°`);
+    } catch (err) {
+      toast(`Échec du recalage : ${err.message}`);
+    }
+  });
 
   // Onglets
   document.querySelectorAll('.tab').forEach((tab) => {

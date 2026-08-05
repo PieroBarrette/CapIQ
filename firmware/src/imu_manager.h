@@ -30,6 +30,13 @@
 // 5. Inclinaison : compensée par la fusion, mais au-delà de ~±60° de
 //    pitch le cap devient peu fiable.
 // ============================================================
+// Pilote réellement utilisé, choisi automatiquement au démarrage.
+enum class ImuBackend : uint8_t {
+  NONE,            // aucun capteur exploitable
+  MPU9250_FUSION,  // MPU-9250 + AK8963 : cap ABSOLU (magnétique)
+  MPU6500_GYRO,    // MPU-6500 sans boussole : cap RELATIF, dérive
+};
+
 class IMUManager {
 public:
   // Initialise I2C + MPU-9250 + filtre, puis charge la calibration NVS.
@@ -78,6 +85,17 @@ public:
   // Ex. « OK 0x68 » / « Aucun peripherique I2C » / « MPU 0x68 sans magnetometre »
   const char* getDiagnostic() const;
 
+  ImuBackend getBackend() const;
+
+  // true si le cap est ABSOLU (boussole). false = cap relatif qui dérive :
+  // l'app doit alors prévenir l'utilisateur et proposer un recalage.
+  bool hasAbsoluteHeading() const;
+
+  // Recale le cap courant sur la valeur donnée (par défaut le nord).
+  // Indispensable en mode gyroscope seul : on s'oriente à la boussole de
+  // poche, puis on déclare « je regarde vers X degrés ».
+  void alignHeadingTo(float deg);
+
 private:
   bool loadCalibration();
   bool saveCalibration();
@@ -96,8 +114,16 @@ private:
   bool calGyroOk_  = false;
   bool calMagOk_   = false;
 
-  uint8_t address_ = 0;              // adresse I2C retenue (0 = aucune)
-  char    diagnostic_[64] = "non initialise";
+  uint8_t    address_ = 0;              // adresse I2C retenue (0 = aucune)
+  char       diagnostic_[64] = "non initialise";
+  ImuBackend backend_ = ImuBackend::NONE;
+
+  // ---- État propre au pilote MPU-6500 (mode gyroscope seul) ----
+  bool     initMpu6500();
+  bool     updateMpu6500();   // true si un NOUVEL échantillon a été traité
+  float    yawRelative_   = 0.0f;   // intégration du gyro Z, non bornée
+  float    gyroBias_[3]   = {0, 0, 0};
+  uint32_t lastMicros_    = 0;
 
   uint32_t sampleCount_     = 0;
   uint32_t rateWindowStart_ = 0;

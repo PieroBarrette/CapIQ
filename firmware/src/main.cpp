@@ -48,6 +48,12 @@ static int readBatteryPercent() { return 100; }
 // ---- Persistance -------------------------------------------------------
 static void loadState() {
   Preferences prefs;
+  // Première ouverture en écriture : crée l'espace de noms s'il n'existe pas
+  // encore (carte vierge), ce qui évite les « nvs_open failed: NOT_FOUND »
+  // affichés en rouge à chaque lecture ultérieure.
+  prefs.begin(NVS_NAMESPACE, false);
+  prefs.end();
+
   prefs.begin(NVS_NAMESPACE, true);
   settings.deadzoneDeg   = prefs.getFloat("dz", DEFAULT_DEADZONE_DEG);
   settings.brightnessPct = prefs.getUChar("bri", LED_DEFAULT_BRIGHTNESS_PCT);
@@ -92,6 +98,9 @@ static String buildStatusJson() {
   doc["imu"]       = imu.isHealthy();
   doc["mag"]       = imu.hasMagnetometer();
   doc["imuDiag"]   = imu.getDiagnostic();  // cause exacte si imu == false
+  // false = cap RELATIF qui dérive (gyroscope seul) : l'app doit le signaler
+  // et proposer un recalage plutôt que de laisser croire à un azimut vrai.
+  doc["absolute"]  = imu.hasAbsoluteHeading();
   doc["cal"]       = imu.isCalibrated();
   doc["rate"]      = roundf(imu.getMeasuredRateHz());
   doc["deadzone"]  = settings.deadzoneDeg;
@@ -168,6 +177,13 @@ static void handleCommand(const String& json) {
   } else if (strcmp(cmd, "reset_cal") == 0) {
     imu.clearCalibration();
     pushStatus(true);
+  } else if (strcmp(cmd, "align") == 0) {
+    // Recalage du cap : indispensable en mode gyroscope seul.
+    imu.alignHeadingTo(doc["heading"] | 0.0f);
+    settings.headingOffset = imu.getHeadingOffset();
+    saveSettings();
+    led.flash(0, 0, 200, 0, 250);
+    pushStatus(true);
   } else {
     Serial.printf("[APP] Commande inconnue : %s\n", cmd);
   }
@@ -185,6 +201,7 @@ static void printHelp() {
   Serial.println(F("i        infos systeme (JSON statut)"));
   Serial.println(F("x        effacer les appairages BLE (depannage connexion)"));
   Serial.println(F("a        relancer la publicite BLE (depannage connexion)"));
+  Serial.println(F("z <deg>  recaler le cap courant sur <deg> (mode gyro seul)"));
   Serial.println(F("s        balayer le bus I2C (depannage capteur)"));
   Serial.println(F("R        redemarrer l'ESP32"));
   Serial.println(F("h        cette aide"));
@@ -215,6 +232,11 @@ static void processSerialCommand(String line) {
     case 'a': ble.restartAdvertising(); break;
     case 's': imu.scanBus(); break;
     case 'R': ESP.restart(); break;
+    case 'z':
+      imu.alignHeadingTo(arg.length() ? arg.toFloat() : 0.0f);
+      settings.headingOffset = imu.getHeadingOffset();
+      saveSettings();
+      break;
     default: printHelp(); break;
   }
 }

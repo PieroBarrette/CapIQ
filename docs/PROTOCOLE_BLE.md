@@ -46,6 +46,11 @@ Valeur normalisée 0-360, persistée en NVS (le casque garde sa cible après reb
 ```
 `mode` ∈ `BOOT | CONNECTION | DIRECTION | CALIBRATION | ERROR`.
 `rate` = fréquence IMU réellement mesurée (Hz).
+`imuDiag` = cause exacte en clair quand `imu` vaut `false`.
+`absolute` = **`false` si le cap est RELATIF** (gyroscope seul, il dérive).
+L'application doit alors afficher un avertissement et proposer `cmd:"align"`
+plutôt que de laisser croire à un azimut vrai — voir
+[HARDWARE.md](HARDWARE.md#mode-dégradé--gyroscope-seul--mpu-6500).
 
 ### COMMAND (téléphone → casque)
 | Commande | Effet |
@@ -54,6 +59,7 @@ Valeur normalisée 0-360, persistée en NVS (le casque garde sa cible après reb
 | `{"cmd":"cal_imu"}` | Calibration gyro/accel (~5 s, immobile) |
 | `{"cmd":"cal_mag"}` | Calibration magnétomètre (~20 s, faire des 8) |
 | `{"cmd":"reset_cal"}` | Efface la calibration sauvegardée |
+| `{"cmd":"align","heading":90}` | Recale le cap courant sur 90° (indispensable en mode gyroscope seul) |
 
 ## Comportements
 - À la **connexion** de l'app : elle pousse ses réglages puis sa cible
