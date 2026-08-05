@@ -299,12 +299,14 @@ function setConnectedUI(connected, name = '') {
 
 /* ---------- Connexion ---------- */
 
-function showConnectError(info) {
+function showConnectError(info, severity = 'err') {
   const box = $('connect-error');
   if (!info) {
     box.classList.add('hidden');
     return;
   }
+  box.classList.remove('err', 'warn');
+  box.classList.add(severity);
   $('connect-error-title').textContent = info.title;
   $('connect-error-advice').textContent = info.advice;
   box.classList.remove('hidden');
@@ -316,6 +318,29 @@ async function startConnection({ allDevices = false } = {}) {
   pill.textContent = 'Connexion…';
   $('btn-connect').disabled = true;
   showConnectError(null);
+
+  // Chien de garde : sur Android, requestDevice() peut rester en attente
+  // indéfiniment sans jamais afficher le sélecteur (scan BLE bloqué par la
+  // Localisation ou la permission « Appareils à proximité »). L'interface
+  // restait alors figée sur « Connexion… » sans le moindre message.
+  // On ne peut pas annuler requestDevice() : on informe sans interrompre.
+  const watchdog = setTimeout(() => {
+    showConnectError({
+      title: 'Aucune fenêtre de sélection ne s\'est ouverte',
+      advice: 'Si vous ne voyez pas la liste des appareils, le scan Bluetooth '
+            + 'est bloqué par Android. Activez la Localisation (GPS) du '
+            + 'téléphone et autorisez « Appareils à proximité » pour Chrome '
+            + '(Paramètres → Applications → Chrome → Autorisations), puis '
+            + 'relancez. Réglages → Diagnostic Bluetooth confirme lequel des '
+            + 'deux manque.',
+    }, 'warn');
+    // requestDevice() reste en attente : sans cela le bouton resterait
+    // désactivé indéfiniment et l'utilisateur ne pourrait pas réessayer.
+    $('btn-connect').disabled = false;
+    $('connection-pill').dataset.state = 'off';
+    $('connection-pill').textContent = 'Déconnecté';
+  }, 15000);
+
   try {
     await ble.connect({ allDevices });
   } catch (err) {
@@ -324,9 +349,12 @@ async function startConnection({ allDevices = false } = {}) {
     // Toute erreur autre qu'une annulation est affichée EN CLAIR et de façon
     // persistante : un toast fugace laissait l'utilisateur sans explication.
     const info = describeBleError(err);
-    if (!info.cancelled) showConnectError(info);
+    // Une annulation efface aussi l'avertissement éventuel du chien de garde :
+    // si le sélecteur a fini par s'ouvrir, le message n'a plus lieu d'être.
+    showConnectError(info.cancelled ? null : info);
     console.warn('[BLE] échec de connexion :', err);
   } finally {
+    clearTimeout(watchdog);
     $('btn-connect').disabled = false;
   }
 }
