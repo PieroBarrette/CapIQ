@@ -9,79 +9,236 @@
     .pass { color: #3ecf6f; }
     .fail { color: #ff5252; font-weight: bold; }
     h1 { font-size: 1.2rem; }
-    li { margin: 4px 0; font-family: Consolas, monospace; font-size: 0.85rem; }
+    h2 { font-size: 0.95rem; color: #93a69a; margin: 18px 0 6px; }
+    li { margin: 4px 0; font-family: Consolas, monospace; font-size: 0.85rem; list-style: none; }
+    #summary { font-size: 1.05rem; margin-top: 16px; }
   </style>
 </head>
 <body>
-  <h1>Capiq — Auto-tests des calculs de navigation</h1>
+  <h1>Capiq — Auto-tests navigation, GPX et géomagnétisme</h1>
   <p>Page de développement (non mise en cache par la PWA). Ouvrir via le serveur local.</p>
-  <ul id="results"></ul>
+  <div id="results"></div>
   <p id="summary"></p>
 
   <script type="module">
     import { normalize360, wrap180, calculateDistance, calculateBearing }
       from '../src/navigation_service.js';
     import { Waypoint } from '../models/navigation_model.js';
+    import { parseGpx } from '../src/gpx_service.js';
+    import { loadModel, magneticField, magneticDeclination, trueToMagnetic,
+             isModelLoaded, decimalYear } from '../src/geomag_service.js';
 
-    const results = [];
+    const groups = [];
+    let current = null;
+    function section(name) { current = { name, items: [] }; groups.push(current); }
     function check(name, actual, expected, tolerance = 0) {
       const ok = typeof expected === 'number'
         ? Math.abs(actual - expected) <= tolerance
         : actual === expected;
-      results.push({ name, ok, detail: `attendu ${expected}${tolerance ? '±' + tolerance : ''}, obtenu ${actual}` });
+      current.items.push({ name, ok,
+        detail: `attendu ${expected}${tolerance ? ' ±' + tolerance : ''}, obtenu ${actual}` });
+    }
+    function checkTrue(name, cond, detail = '') {
+      current.items.push({ name, ok: !!cond, detail });
     }
     function checkThrows(name, fn) {
       let threw = false;
       try { fn(); } catch { threw = true; }
-      results.push({ name, ok: threw, detail: threw ? 'exception levée ✓' : 'AUCUNE exception' });
+      current.items.push({ name, ok: threw, detail: threw ? 'exception levée ✓' : 'AUCUNE exception' });
     }
 
-    // ---- Angles (convention Capiq : erreur = wrap180(cible - cap)) ----
+    /* ---------- Angles ---------- */
+    section('Angles (convention Capiq : erreur = wrap180(cible − cap))');
     check('normalize360(-90) = 270', normalize360(-90), 270);
     check('normalize360(725) = 5', normalize360(725), 5, 1e-9);
     check('wrap180(350) = -10', wrap180(350), -10, 1e-9);
     check('wrap180(-190) = 170', wrap180(-190), 170, 1e-9);
-    check('erreur cible 90 / cap 75 = +15 (tourner à droite)', wrap180(90 - 75), 15, 1e-9);
-    check('erreur cible 90 / cap 123.5 = -33.5 (tourner à gauche)', wrap180(90 - 123.5), -33.5, 1e-9);
-    check('erreur cible 10 / cap 350 = +20 (passage du nord)', wrap180(10 - 350), 20, 1e-9);
+    check('cible 90 / cap 75 = +15 (droite)', wrap180(90 - 75), 15, 1e-9);
+    check('cible 90 / cap 123.5 = -33.5 (gauche)', wrap180(90 - 123.5), -33.5, 1e-9);
+    check('cible 10 / cap 350 = +20 (passage du nord)', wrap180(10 - 350), 20, 1e-9);
 
-    // ---- Distances (haversine) ----
+    /* ---------- Distances ---------- */
+    section('Distances (haversine)');
     const eq0 = { latitude: 0, longitude: 0 };
     const eq1 = { latitude: 0, longitude: 1 };
-    check('distance point identique = 0 m', calculateDistance(eq0, eq0), 0);
+    check('point identique = 0 m', calculateDistance(eq0, eq0), 0);
     check('1° de longitude à l\'équateur ≈ 111 195 m', calculateDistance(eq0, eq1), 111195, 200);
-    check('distance symétrique A→B = B→A',
-      calculateDistance(eq0, eq1) - calculateDistance(eq1, eq0), 0, 1e-6);
+    check('symétrie A→B = B→A', calculateDistance(eq0, eq1) - calculateDistance(eq1, eq0), 0, 1e-6);
 
-    // ---- Azimuts ----
-    check('azimut vers l\'est = 90°', calculateBearing(eq0, eq1), 90, 0.01);
-    check('azimut vers l\'ouest = 270°', calculateBearing(eq1, eq0), 270, 0.01);
-    check('azimut vers le nord = 0°',
+    /* ---------- Azimuts ---------- */
+    section('Azimuts géographiques');
+    check('vers l\'est = 90°', calculateBearing(eq0, eq1), 90, 0.01);
+    check('vers l\'ouest = 270°', calculateBearing(eq1, eq0), 270, 0.01);
+    check('vers le nord = 0°',
       calculateBearing({ latitude: 48, longitude: -68 }, { latitude: 49, longitude: -68 }), 0, 0.01);
-    check('azimut vers le sud = 180°',
+    check('vers le sud = 180°',
       calculateBearing({ latitude: 49, longitude: -68 }, { latitude: 48, longitude: -68 }), 180, 0.01);
 
-    // ---- Modèle Waypoint ----
+    /* ---------- Waypoint ---------- */
+    section('Modèle Waypoint');
     const wp = new Waypoint({ latitude: 48.45, longitude: -68.52, name: 'Camp' });
-    check('Waypoint conserve le nom', wp.name, 'Camp');
-    check('Waypoint round-trip JSON', Waypoint.fromJSON(wp.toJSON()).latitude, 48.45);
-    checkThrows('Waypoint latitude 91 rejetée', () => new Waypoint({ latitude: 91, longitude: 0 }));
-    checkThrows('Waypoint longitude 200 rejetée', () => new Waypoint({ latitude: 0, longitude: 200 }));
+    check('conserve le nom', wp.name, 'Camp');
+    check('aller-retour JSON', Waypoint.fromJSON(wp.toJSON()).latitude, 48.45);
+    checkThrows('latitude 91 rejetée', () => new Waypoint({ latitude: 91, longitude: 0 }));
+    checkThrows('longitude 200 rejetée', () => new Waypoint({ latitude: 0, longitude: 200 }));
 
-    // ---- Rendu ----
-    const ul = document.getElementById('results');
-    let passed = 0;
-    for (const r of results) {
-      const li = document.createElement('li');
-      li.className = r.ok ? 'pass' : 'fail';
-      li.textContent = `${r.ok ? '✓' : '✗'} ${r.name} — ${r.detail}`;
-      ul.appendChild(li);
-      if (r.ok) passed++;
+    /* ---------- GPX ---------- */
+    section('Import GPX (format exporté par GSFNav)');
+    const gpxSample = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="GSFNav" xmlns="http://www.topografix.com/GPX/1/1">
+  <wpt lat="48.4501" lon="-68.5202"><ele>142.5</ele><name>Placette 1</name></wpt>
+  <wpt lat="48.4510" lon="-68.5190"><name>Placette 2</name></wpt>
+  <rte><name>Ligne A</name>
+    <rtept lat="48.4520" lon="-68.5180"><name>A-1</name></rtept>
+    <rtept lat="48.4530" lon="-68.5170"><name>A-2</name></rtept>
+  </rte>
+  <trk><name>Trace</name><trkseg>
+    <trkpt lat="48.4600" lon="-68.5100"/><trkpt lat="48.4601" lon="-68.5101"/>
+  </trkseg></trk>
+</gpx>`;
+    const gpx = parseGpx(gpxSample);
+    check('4 points navigables (2 wpt + 2 rtept)', gpx.waypoints.length, 4);
+    check('nom du premier point', gpx.waypoints[0].name, 'Placette 1');
+    check('altitude lue', gpx.waypoints[0].altitude, 142.5);
+    check('altitude absente = null', gpx.waypoints[1].altitude, null);
+    check('1 route détectée', gpx.routes.length, 1);
+    check('nom de la route', gpx.routes[0].name, 'Ligne A');
+    check('2 points de trace comptés', gpx.trackPointCount, 2);
+    checkTrue('trace signalée mais non importée',
+      gpx.warnings.some((w) => /trace/i.test(w)), gpx.warnings[0] || '');
+
+    const gpxDup = `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">
+      <wpt lat="48.4501" lon="-68.5202"><name>P</name></wpt>
+      <rte><rtept lat="48.4501" lon="-68.5202"><name>P bis</name></rtept></rte></gpx>`;
+    check('doublon wpt/rtept fusionné', parseGpx(gpxDup).waypoints.length, 1);
+
+    checkThrows('XML invalide rejeté', () => parseGpx('<gpx><wpt'));
+    checkThrows('fichier non-GPX rejeté', () => parseGpx('<kml><Placemark/></kml>'));
+
+    /* ---------- Géomagnétisme ----------
+       Sans les coefficients officiels, on valide le MOTEUR avec un
+       dipôle axial pur, dont la solution est analytique :
+         - déclinaison nulle partout (aucun terme m>0 → By = 0)
+         - inclinaison nulle à l'équateur, positive au nord
+         - symétrie de révolution : indépendance vis-à-vis de la longitude
+    */
+    section('Géomagnétisme — moteur WMM validé sur dipôle axial');
+    checkTrue('aucun modèle chargé au départ', !isModelLoaded());
+    check('déclinaison indisponible sans modèle',
+      magneticDeclination(48.45, -68.52), null);
+    check('trueToMagnetic refuse sans modèle', trueToMagnetic(90, 48.45, -68.52), null);
+
+    const DIPOLE_COF = `    2025.0            TEST-DIPOLE  12/17/2024
+  1  0  -30000.0       0.0        0.0        0.0
+  1  1       0.0       0.0        0.0        0.0
+9999999999999999999999999999999999999999999999999999999999999999
+`;
+    const info = loadModel(DIPOLE_COF);
+    check('époque lue', info.epoch, 2025);
+    check('degré maximal', info.nMax, 1);
+    checkTrue('modèle chargé', isModelLoaded());
+
+    const dEq = magneticDeclination(0, 0, 0, new Date(Date.UTC(2025, 0, 1)));
+    check('dipôle axial : déclinaison nulle à l\'équateur', dEq, 0, 1e-6);
+    check('dipôle axial : déclinaison nulle à 48°N',
+      magneticDeclination(48.45, -68.52, 0, new Date(Date.UTC(2025, 0, 1))), 0, 1e-6);
+
+    const fEq = magneticField(0, 0, 0, new Date(Date.UTC(2025, 0, 1)));
+    check('inclinaison nulle à l\'équateur', fEq.inclination, 0, 1e-6);
+    const fN = magneticField(45, 0, 0, new Date(Date.UTC(2025, 0, 1)));
+    const fS = magneticField(-45, 0, 0, new Date(Date.UTC(2025, 0, 1)));
+    checkTrue('inclinaison positive au nord', fN.inclination > 0, `${fN.inclination.toFixed(2)}°`);
+    check('antisymétrie nord/sud', fN.inclination + fS.inclination, 0, 1e-6);
+    // Dipôle axial : tan(I') = 2·tan(φ') dans le repère GÉOCENTRIQUE.
+    // L'inclinaison rendue est exprimée dans le repère GÉODÉSIQUE, d'où
+    // l'ajout de psi = φ' − φ (≈ −0,19° à 45°). Oublier cette rotation est
+    // l'erreur classique — l'attendu est donc dérivé, pas codé en dur.
+    const e2 = (1 / 298.257223563) * (2 - 1 / 298.257223563);
+    const phiGd = Math.PI / 4;
+    const phiGc = Math.atan((1 - e2) * Math.tan(phiGd));
+    const attenduI = (Math.atan(2 * Math.tan(phiGc)) + (phiGc - phiGd)) * 180 / Math.PI;
+    check('inclinaison à 45° suit tan(I)=2·tan(φ) + rotation géodésique',
+      fN.inclination, +attenduI.toFixed(3), 0.02);
+
+    const fLon = magneticField(45, 137, 0, new Date(Date.UTC(2025, 0, 1)));
+    check('symétrie de révolution (inclinaison)', fLon.inclination, fN.inclination, 1e-9);
+    check('symétrie de révolution (intensité)', fLon.intensity, fN.intensity, 1e-9);
+    checkTrue('intensité dans un ordre de grandeur terrestre',
+      fN.intensity > 20000 && fN.intensity < 80000, `${fN.intensity.toFixed(0)} nT`);
+
+    // Dipôle incliné : un terme h(1,1) doit créer une déclinaison non nulle
+    const TILTED_COF = `    2025.0            TEST-TILT  12/17/2024
+  1  0  -30000.0       0.0        0.0        0.0
+  1  1   -1500.0    4800.0        0.0        0.0
+9999999999999999999999999999999999999999999999999999999999999999
+`;
+    loadModel(TILTED_COF);
+    const t2025 = new Date(Date.UTC(2025, 0, 1));
+    // Pôle magnétique de ce dipôle : λ = atan2(h11, g11) ≈ 107,4°,
+    // inclinaison de l'axe ≈ 9,5°.
+    const lonPole = Math.atan2(4800, -1500) * 180 / Math.PI;
+    const tiltDeg = Math.atan2(Math.hypot(-1500, 4800), 30000) * 180 / Math.PI;
+
+    // Test physique fort : sur le méridien contenant les DEUX pôles,
+    // la déclinaison doit s'annuler.
+    check('déclinaison nulle sur le méridien du pôle magnétique',
+      magneticDeclination(48.45, lonPole, 0, t2025), 0, 0.05);
+    check('déclinaison nulle sur le méridien opposé',
+      magneticDeclination(48.45, lonPole - 180, 0, t2025), 0, 0.05);
+
+    // Balayage complet : amplitude cohérente avec l'inclinaison du dipôle,
+    // et changement de signe de part et d'autre du méridien des pôles.
+    let dMin = Infinity, dMax = -Infinity;
+    for (let lon = -180; lon < 180; lon += 5) {
+      const d = magneticDeclination(48.45, lon, 0, t2025);
+      dMin = Math.min(dMin, d); dMax = Math.max(dMax, d);
+    }
+    checkTrue('déclinaison varie fortement avec la longitude',
+      dMax - dMin > 2 * tiltDeg, `amplitude ${(dMax - dMin).toFixed(1)}° (inclinaison ${tiltDeg.toFixed(1)}°)`);
+    checkTrue('déclinaison change de signe', dMin < 0 && dMax > 0,
+      `${dMin.toFixed(1)}° … ${dMax.toFixed(1)}°`);
+    // Près du pôle magnétique la déclinaison diverge : comportement attendu.
+    checkTrue('déclinaison forte à haute latitude',
+      Math.abs(magneticDeclination(85, 0, 0, t2025)) > 40,
+      `${magneticDeclination(85, 0, 0, t2025).toFixed(1)}° à 85°N`);
+    const dTilt = magneticDeclination(48.45, 0, 0, t2025);
+
+    /* ---------- Conversion vrai → magnétique ---------- */
+    section('Conversion azimut vrai → magnétique');
+    // Avec une déclinaison ouest (négative), le cap magnétique est PLUS GRAND
+    // que le cap vrai : c'est l'erreur classique de signe.
+    const decl = magneticDeclination(48.45, -68.52, 0, new Date(Date.UTC(2025, 0, 1)));
+    const magB = trueToMagnetic(90, 48.45, -68.52, new Date(Date.UTC(2025, 0, 1)));
+    check('magnétique = vrai − déclinaison', magB, normalize360(90 - decl), 1e-9);
+    checkTrue('résultat borné 0-360', magB >= 0 && magB < 360, `${magB.toFixed(2)}°`);
+
+    /* ---------- Année décimale ---------- */
+    section('Année décimale');
+    check('1er janvier = année pile', decimalYear(new Date(Date.UTC(2025, 0, 1))), 2025, 1e-6);
+    check('milieu d\'année ≈ +0.5', decimalYear(new Date(Date.UTC(2025, 6, 2))), 2025.5, 0.01);
+
+    /* ---------- Rendu ---------- */
+    const container = document.getElementById('results');
+    let passed = 0, total = 0;
+    for (const grp of groups) {
+      const h = document.createElement('h2');
+      h.textContent = grp.name;
+      container.appendChild(h);
+      const ul = document.createElement('ul');
+      for (const r of grp.items) {
+        total++;
+        if (r.ok) passed++;
+        const li = document.createElement('li');
+        li.className = r.ok ? 'pass' : 'fail';
+        li.textContent = `${r.ok ? '✓' : '✗'} ${r.name} — ${r.detail}`;
+        ul.appendChild(li);
+      }
+      container.appendChild(ul);
     }
     const summary = document.getElementById('summary');
-    summary.textContent = `${passed}/${results.length} tests réussis`;
-    summary.className = passed === results.length ? 'pass' : 'fail';
-    document.title = `[${passed}/${results.length}] Tests Capiq`;
+    summary.textContent = `${passed}/${total} tests réussis`;
+    summary.className = passed === total ? 'pass' : 'fail';
+    document.title = `[${passed}/${total}] Tests Capiq`;
   </script>
 </body>
 </html>

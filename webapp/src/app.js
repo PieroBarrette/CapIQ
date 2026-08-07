@@ -12,7 +12,7 @@ import { Waypoint } from '../models/navigation_model.js';
 // DOIT rester aligné sur CACHE_NAME dans service-worker.js : c'est ce que
 // l'onglet Réglages affiche, et donc le seul moyen de savoir quelle version
 // tourne réellement sur un téléphone.
-const APP_VERSION = '0.1.6';
+const APP_VERSION = '0.1.7';
 
 const MODE_LABELS = {
   BOOT: 'Démarrage',

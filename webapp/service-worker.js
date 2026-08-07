@@ -6,7 +6,7 @@
    la mise à jour des fichiers.
    ============================================================ */
 
-const CACHE_NAME = 'capiq-v0.1.6';
+const CACHE_NAME = 'capiq-v0.1.7';
 
 const PRECACHE = [
   './',
@@ -18,8 +18,17 @@ const PRECACHE = [
   './src/navigation_service.js',
   './src/storage_service.js',
   './models/navigation_model.js',
+  './src/gpx_service.js',
+  './src/geomag_service.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
+];
+
+// Ressources souhaitables mais non bloquantes : leur absence ne doit pas
+// faire échouer l'installation entière (cache.addAll est tout-ou-rien).
+// WMM.COF doit être téléchargé depuis la NOAA — voir data/LISEZMOI.md.
+const PRECACHE_OPTIONAL = [
+  './data/WMM.COF',
 ];
 
 self.addEventListener('install', (event) => {
@@ -30,7 +39,11 @@ self.addEventListener('install', (event) => {
       // anciens fichiers servis par le cache HTTP.
       .then((cache) => cache.addAll(
         PRECACHE.map((url) => new Request(url, { cache: 'reload' }))
-      ))
+      ).then(() => Promise.all(
+        // Chacune est tentée séparément : un fichier absent est ignoré.
+        PRECACHE_OPTIONAL.map((url) =>
+          cache.add(new Request(url, { cache: 'reload' })).catch(() => {}))
+      )))
       .then(() => self.skipWaiting())
   );
 });
@@ -51,6 +64,10 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return; // jamais de proxy externe
+
+  // Les pages de développement ne sont jamais mises en cache : sinon toute
+  // modification d'un test continue d'afficher l'ancienne version.
+  if (url.pathname.includes('/tests/')) return;
 
   event.respondWith(
     caches.match(request, { ignoreSearch: true }).then((cached) => {
