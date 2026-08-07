@@ -9,7 +9,10 @@ import * as storage from './storage_service.js';
 import { wrap180, normalize360, NavigationService, calculateDistance, calculateBearing } from './navigation_service.js';
 import { Waypoint } from '../models/navigation_model.js';
 
-const APP_VERSION = '0.1.0';
+// DOIT rester aligné sur CACHE_NAME dans service-worker.js : c'est ce que
+// l'onglet Réglages affiche, et donc le seul moyen de savoir quelle version
+// tourne réellement sur un téléphone.
+const APP_VERSION = '0.1.5';
 
 const MODE_LABELS = {
   BOOT: 'Démarrage',
@@ -149,6 +152,7 @@ const state = {
   target: storage.loadTarget(),      // number | null
   settings: storage.loadSettings(),
   connected: false,
+  targetPending: false,    // true = cible saisie localement, pas encore envoyée
   absoluteHeading: true,   // false = cap relatif (gyroscope seul), dérive
   heading: null,
   error: null,
@@ -185,19 +189,29 @@ function setTargetLocal(deg, { fromDevice = false } = {}) {
   $('target-slider').value = Math.round(state.target) % 360;
   dial.setTarget(state.target);
   $('stat-target').textContent = fmtDeg(state.target, state.target % 1 ? 1 : 0);
-  if (!fromDevice) storage.saveTarget(state.target);
+  if (!fromDevice) {
+    storage.saveTarget(state.target);
+    // Saisie de l'utilisateur : on protège la valeur jusqu'à l'envoi.
+    state.targetPending = true;
+  }
   updateSendButton();
   updateDirectionBanner();
 }
 
 function updateSendButton() {
   $('send-target').disabled = !state.connected || state.target === null;
+  // Rappel discret mais visible : la cible affichée n'est pas encore active
+  // sur le casque tant qu'ENVOYER n'a pas été touché.
+  $('target-pending-hint').classList.toggle('hidden', !state.targetPending);
+  $('stat-target').classList.toggle('pending', state.targetPending);
 }
 
 async function sendTarget() {
   if (state.target === null) return;
   try {
     await ble.sendTargetAzimuth(state.target);
+    state.targetPending = false;   // le casque fait de nouveau autorité
+    updateSendButton();
     toast(`🎯 Cible envoyée au casque : ${state.target}°`);
   } catch (err) {
     toast(`Échec de l'envoi : ${err.message}`);
@@ -239,9 +253,12 @@ function handleTelemetry(pkt) {
   state.error = pkt.error ?? null;
   if (pkt.battery !== undefined) state.battery = pkt.battery;
 
-  // Le casque est la référence une fois connecté (cible modifiable
-  // aussi par console série) : on recale l'UI si elle diverge.
-  if (pkt.target !== null && pkt.target !== undefined &&
+  // Le casque reste la référence de la cible (elle est aussi modifiable par
+  // la console série), MAIS jamais pendant que l'utilisateur en saisit une
+  // nouvelle : sinon la télémétrie (5 Hz) écrase la saisie avant même qu'il
+  // ait pu appuyer sur ENVOYER.
+  if (!state.targetPending &&
+      pkt.target !== null && pkt.target !== undefined &&
       (state.target === null || Math.abs(wrap180(pkt.target - state.target)) > 0.05)) {
     setTargetLocal(pkt.target, { fromDevice: true });
   }
@@ -382,7 +399,11 @@ async function onConnected(name) {
   // L'app est la source de vérité des réglages : push automatique
   try {
     await ble.sendSettings(state.settings);
+    // L'app pousse sa cible à la connexion : elle et le casque sont alors
+    // d'accord, la télémétrie peut reprendre son rôle de référence.
     if (state.target !== null) await ble.sendTargetAzimuth(state.target);
+    state.targetPending = false;
+    updateSendButton();
   } catch { /* le casque vient peut-être de couper */ }
 }
 
@@ -642,9 +663,28 @@ function bindSystem() {
 
   // Service worker (fonctionnement hors ligne)
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js').catch((err) => {
-      console.warn('[SW] enregistrement impossible :', err);
+    // Le cache est servi en priorité (indispensable hors ligne), ce qui peut
+    // laisser un téléphone bloqué sur une version périmée pendant des jours.
+    // On force donc une vérification à chaque lancement, et on recharge une
+    // fois dès qu'une nouvelle version prend la main.
+    // `controllerchange` se déclenche AUSSI à la toute première installation :
+    // ne recharger que s'il y avait déjà un service worker aux commandes,
+    // sinon la première visite se recharge pour rien.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      reloading = true;
+      window.location.reload();
     });
+
+    navigator.serviceWorker.register('./service-worker.js')
+      .then((reg) => {
+        reg.update().catch(() => { /* hors ligne : on garde le cache */ });
+      })
+      .catch((err) => {
+        console.warn('[SW] enregistrement impossible :', err);
+      });
   }
 }
 

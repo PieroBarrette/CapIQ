@@ -71,6 +71,19 @@ constexpr uint16_t LED_FRAME_HZ = 30;               // fréquence de rendu
 constexpr float DIRECTION_FULLSCALE_DEG = 90.0f;
 constexpr float DEFAULT_DEADZONE_DEG    = 2.0f;     // ± zone morte "aligné"
 
+// Contraste d'intensité : la LED "aligné" doit sauter aux yeux par rapport
+// au guidage. C'est le contraste — et non une animation — qui signale
+// l'alignement, bien plus lisible en plein jour.
+constexpr float LED_ALIGNED_INTENSITY = 1.00f;  // vert d'alignement : plein feu
+constexpr float LED_GUIDE_INTENSITY   = 0.40f;  // guidage courant : volontairement discret
+constexpr float LED_EDGE_INTENSITY    = 0.85f;  // cible au-delà de ±90° : bien visible
+
+// Courbe de couleur vert → jaune → rouge. Le rouge sature avant le bord
+// (REDGAIN > 1) et le vert s'éteint plus vite que linéairement (GREENFALL),
+// pour que les extrémités soient franchement rouges.
+constexpr float LED_COLOR_RED_GAIN   = 2.0f;
+constexpr float LED_COLOR_GREEN_FALL = 1.5f;
+
 // ------------------------------------------------------------
 // BLE — les UUID doivent rester IDENTIQUES à webapp/src/ble_service.js
 // ------------------------------------------------------------

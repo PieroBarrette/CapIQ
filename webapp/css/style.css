@@ -158,6 +158,11 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .stat-value.accent { color: var(--accent); }
+
+/* Cible saisie mais pas encore envoyée au casque : on la distingue de la
+   cible réellement active, sinon l'utilisateur croit le guidage à jour. */
+.stat-value.pending { opacity: 0.55; font-style: italic; }
+.pending-hint { color: var(--warn); text-align: center; }
 .stat-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
 
 /* ---------- Saisie de cible ---------- */

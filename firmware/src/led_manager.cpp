@@ -105,21 +105,23 @@ void LEDManager::renderDirection(uint32_t frame) {
   const int center = (int)LED_CENTER_INDEX;
 
   if (fabsf(error) <= deadzone) {
-    // ALIGNÉ : centre vert en respiration douce.
-    const float breath = 0.35f + 0.25f * (sinf(frame * 0.15f) + 1.0f) * 0.5f;
-    setPix(center, 0, 255, 40, 0, breath);
+    // ALIGNÉ : vert franc, FIXE et à pleine intensité. C'est le saut de
+    // luminosité par rapport au guidage (volontairement discret) qui
+    // signale l'alignement — plus lisible qu'une animation en plein jour.
+    setPix(center, 0, 255, 40, 0, LED_ALIGNED_INTENSITY);
     return;
   }
 
-  // Couleur selon l'amplitude : vert → jaune → rouge
+  // Couleur selon l'amplitude : vert → jaune → rouge, avec du rouge franc
+  // dès les deux tiers de la course (voir les constantes dans config.h).
   const float t = min(fabsf(error) / DIRECTION_FULLSCALE_DEG, 1.0f);
-  const uint8_t r = (uint8_t)min(510.0f * t, 255.0f);
-  const uint8_t g = (uint8_t)min(510.0f * (1.0f - t), 255.0f);
+  const uint8_t r = (uint8_t)(255.0f * min(1.0f, LED_COLOR_RED_GAIN * t));
+  const uint8_t g = (uint8_t)(255.0f * powf(1.0f - t, LED_COLOR_GREEN_FALL));
 
   if (fabsf(error) > DIRECTION_FULLSCALE_DEG) {
     // Cible au-delà de ±90° (voire derrière) : LED d'extrémité clignotante
     const int edge = (error > 0) ? LED_COUNT - 1 : 0;
-    if ((frame >> 3) & 1) setPix(edge, 255, 0, 0, 0);
+    if ((frame >> 3) & 1) setPix(edge, 255, 0, 0, 0, LED_EDGE_INTENSITY);
     return;
   }
 
@@ -128,7 +130,7 @@ void LEDManager::renderDirection(uint32_t frame) {
   float pos = center + (error / DIRECTION_FULLSCALE_DEG) * halfSpan;
   pos = constrain(pos, 0.0f, (float)(LED_COUNT - 1));
   const int idx = (int)roundf(pos);
-  setPix(idx, r, g, 0, 0);
+  setPix(idx, r, g, 0, 0, LED_GUIDE_INTENSITY);
 }
 
 void LEDManager::renderCalibration(uint32_t frame) {
