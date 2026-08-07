@@ -165,6 +165,64 @@ body {
 .pending-hint { color: var(--warn); text-align: center; }
 .stat-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
 
+/* Coordonnées : plus longues que des degrés, on réduit pour éviter la coupure. */
+.stat-value.small { font-size: 1.05rem; }
+
+/* ---------- Liste de points de destination ---------- */
+.wp-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+
+.wp-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.wp-item.selected { border-color: var(--accent); background: rgba(255, 140, 46, 0.12); }
+
+.wp-item .wp-main { flex: 1; min-width: 0; cursor: pointer; }
+.wp-item .wp-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wp-item .wp-coords {
+  font-size: 0.76rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.wp-item .wp-del {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.wp-item .wp-del:active { color: var(--err); border-color: var(--err); }
+
+.wp-form { display: flex; gap: 8px; }
+.wp-form input { flex: 1; min-width: 0; width: auto; font-size: 1rem; }
+
+.wp-name {
+  width: 100%;
+  font-size: 1rem;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+/* <label> stylé en bouton pour déclencher l'input file caché. */
+.file-btn { display: flex; align-items: center; justify-content: center; }
+
 /* ---------- Saisie de cible ---------- */
 .field-label { font-size: 0.9rem; color: var(--muted); }
 

@@ -74,53 +74,81 @@ export function positionToPoint(position) {
 }
 
 /**
- * Suivi GPS vers un waypoint (V0.2 — fonctionnel mais non branché à l'UI).
+ * Suivi GPS et guidage vers un waypoint.
+ *
+ * Le suivi de position et le choix de la destination sont volontairement
+ * SÉPARÉS : on veut afficher l'état du GPS (précision, coordonnées) dès
+ * son activation, avant même de savoir où l'on va.
+ *
  * Événements :
- *   'navupdate' → { distanceM, bearingDeg, position, waypoint }
- *   'navpaused' → { error }  (GPS indisponible/refusé)
+ *   'position'  → { latitude, longitude, altitude, accuracy }  à chaque point
+ *   'navupdate' → { distanceM, bearingDeg, position, waypoint } si destination
+ *   'navpaused' → { error }  (GPS indisponible, refusé ou perdu)
  */
 export class NavigationService extends EventTarget {
   constructor() {
     super();
     this._watchId = null;
     this._waypoint = null;
+    this._last = null;
   }
 
-  get active() {
-    return this._watchId !== null;
-  }
+  get active() { return this._watchId !== null; }
+  get destination() { return this._waypoint; }
+  get lastPosition() { return this._last; }
 
-  /** Démarre le guidage vers un waypoint. */
-  navigateToWaypoint(waypoint) {
+  /** Démarre le suivi de position. Sans effet s'il tourne déjà. */
+  startTracking() {
     if (!('geolocation' in navigator)) {
       throw new Error('Géolocalisation non disponible sur cet appareil.');
     }
-    this.stop();
-    this._waypoint = waypoint;
+    if (this._watchId !== null) return;
+
     this._watchId = navigator.geolocation.watchPosition(
       (position) => {
         const here = positionToPoint(position);
-        this.dispatchEvent(new CustomEvent('navupdate', {
-          detail: {
-            distanceM: calculateDistance(here, waypoint),
-            bearingDeg: calculateBearing(here, waypoint),
-            position: here,
-            waypoint,
-          },
-        }));
+        this._last = here;
+        this.dispatchEvent(new CustomEvent('position', { detail: here }));
+        if (this._waypoint) this._emitNav(here);
       },
       (error) => {
         this.dispatchEvent(new CustomEvent('navpaused', { detail: { error } }));
       },
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+      // enableHighAccuracy : indispensable sous couvert forestier, au prix
+      // de la batterie. maximumAge court : on veut une position fraîche.
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 }
     );
+  }
+
+  /** Fixe (ou retire avec null) la destination courante. */
+  setDestination(waypoint) {
+    this._waypoint = waypoint || null;
+    if (this._waypoint && this._last) this._emitNav(this._last);
+  }
+
+  /** Démarre le suivi ET fixe la destination (API historique). */
+  navigateToWaypoint(waypoint) {
+    this.startTracking();
+    this.setDestination(waypoint);
   }
 
   stop() {
     if (this._watchId !== null) {
       navigator.geolocation.clearWatch(this._watchId);
       this._watchId = null;
-      this._waypoint = null;
     }
+    this._waypoint = null;
+    this._last = null;
+  }
+
+  _emitNav(here) {
+    this.dispatchEvent(new CustomEvent('navupdate', {
+      detail: {
+        distanceM: calculateDistance(here, this._waypoint),
+        bearingDeg: calculateBearing(here, this._waypoint),
+        position: here,
+        waypoint: this._waypoint,
+      },
+    }));
   }
 }

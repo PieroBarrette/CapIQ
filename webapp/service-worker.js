@@ -6,7 +6,7 @@
    la mise à jour des fichiers.
    ============================================================ */
 
-const CACHE_NAME = 'capiq-v0.1.7';
+const CACHE_NAME = 'capiq-v0.1.8';
 
 const PRECACHE = [
   './',

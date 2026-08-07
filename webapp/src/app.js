@@ -8,11 +8,13 @@ import { BLEService, describeBleError } from './ble_service.js';
 import * as storage from './storage_service.js';
 import { wrap180, normalize360, NavigationService, calculateDistance, calculateBearing } from './navigation_service.js';
 import { Waypoint } from '../models/navigation_model.js';
+import { parseGpx } from './gpx_service.js';
+import * as geomag from './geomag_service.js';
 
 // DOIT rester aligné sur CACHE_NAME dans service-worker.js : c'est ce que
 // l'onglet Réglages affiche, et donc le seul moyen de savoir quelle version
 // tourne réellement sur un téléphone.
-const APP_VERSION = '0.1.7';
+const APP_VERSION = '0.1.8';
 
 const MODE_LABELS = {
   BOOT: 'Démarrage',
@@ -159,6 +161,14 @@ const state = {
   error: null,
   battery: null,
   deviceStatus: null,
+
+  // ---- Navigation GPS ----
+  waypoints: storage.loadWaypoints(),
+  selectedWpId: null,
+  gpsOn: false,
+  navAutoSend: false,
+  lastSentBearing: null,
+  lastSentAt: 0,
 };
 
 const ble = new BLEService();
@@ -283,6 +293,9 @@ function handleStatus(st) {
   // laisser croire à un azimut vrai — on l'annonce et on offre le recalage.
   state.absoluteHeading = st.absolute !== false;
   $('relative-heading-notice').classList.toggle('hidden', state.absoluteHeading);
+  // Un azimut GPS est un cap ABSOLU : l'envoyer à un casque dont le cap
+  // dérive n'a de sens que s'il vient d'être recalé. On le dit franchement.
+  $('nav-relative-warning').classList.toggle('hidden', state.absoluteHeading);
   $('btn-align').disabled = !state.connected;
 
   // Le casque recalcule lui-même son offset quand on inverse le sens de
@@ -436,6 +449,8 @@ function renderSettingsInputs() {
   $('val-rate').textContent = `${s.rate} Hz`;
   $('set-offset').value = s.offset;
   $('set-invert').checked = !!s.invert;
+  $('set-declination').value = s.declination || 0;
+  $('val-declination').textContent = `${s.declination || 0}°`;
 }
 
 function bindSettings() {
@@ -487,6 +502,285 @@ function bindSettings() {
     } catch (err) {
       toast(`Échec : ${err.message}`);
     }
+  });
+}
+
+/* ============================================================
+   Navigation GPS
+   ============================================================ */
+
+/** Identifiant stable pour retrouver un point dans la liste. */
+function newWaypointId() {
+  return `wp${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function saveWaypoints() {
+  storage.saveWaypoints(state.waypoints);
+}
+
+function selectedWaypoint() {
+  return state.waypoints.find((w) => w.id === state.selectedWpId) || null;
+}
+
+function fmtDistance(m) {
+  if (!Number.isFinite(m)) return '--';
+  if (m < 1000) return `${Math.round(m)} m`;
+  return `${(m / 1000).toFixed(m < 10000 ? 2 : 1)} km`;
+}
+
+function fmtCoord(v) {
+  return Number.isFinite(v) ? v.toFixed(5) : '--';
+}
+
+/**
+ * Déclinaison au point courant : issue du modèle WMM s'il est chargé,
+ * sinon de la saisie manuelle. Retourne aussi sa provenance, pour que
+ * l'affichage ne laisse jamais croire à un calcul automatique.
+ */
+function currentDeclination(latitude, longitude) {
+  if (geomag.isModelLoaded() && Number.isFinite(latitude)) {
+    const d = geomag.magneticDeclination(latitude, longitude);
+    if (d !== null) return { value: d, source: 'modèle WMM' };
+  }
+  return { value: state.settings.declination || 0, source: 'saisie manuelle' };
+}
+
+function renderWaypointList() {
+  const ul = $('waypoint-list');
+  ul.innerHTML = '';
+  $('waypoint-empty').classList.toggle('hidden', state.waypoints.length > 0);
+
+  for (const wp of state.waypoints) {
+    const li = document.createElement('li');
+    li.className = 'wp-item' + (wp.id === state.selectedWpId ? ' selected' : '');
+
+    const main = document.createElement('div');
+    main.className = 'wp-main';
+    const title = document.createElement('div');
+    title.className = 'wp-title';
+    title.textContent = wp.name || 'Point sans nom';
+    const coords = document.createElement('div');
+    coords.className = 'wp-coords';
+    coords.textContent = `${fmtCoord(wp.latitude)}, ${fmtCoord(wp.longitude)}`;
+    // Distance affichée dès qu'une position GPS est connue
+    const here = nav.lastPosition;
+    if (here) coords.textContent += ` · ${fmtDistance(calculateDistance(here, wp))}`;
+    main.append(title, coords);
+    main.addEventListener('click', () => selectWaypoint(wp.id));
+
+    const del = document.createElement('button');
+    del.className = 'wp-del';
+    del.textContent = '🗑';
+    del.setAttribute('aria-label', `Supprimer ${wp.name || 'ce point'}`);
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!window.confirm(`Supprimer « ${wp.name || 'ce point'} » ?`)) return;
+      state.waypoints = state.waypoints.filter((w) => w.id !== wp.id);
+      if (state.selectedWpId === wp.id) selectWaypoint(null);
+      saveWaypoints();
+      renderWaypointList();
+    });
+
+    li.append(main, del);
+    ul.appendChild(li);
+  }
+}
+
+function selectWaypoint(id) {
+  state.selectedWpId = id;
+  const wp = selectedWaypoint();
+  nav.setDestination(wp);
+  $('nav-active').classList.toggle('hidden', !wp);
+  $('nav-target-name').textContent = wp ? (wp.name || 'Point sans nom') : '—';
+  if (!wp) {
+    state.navAutoSend = false;
+    $('nav-auto').checked = false;
+  } else if (!state.gpsOn) {
+    toast('Activez le GPS pour démarrer le guidage');
+  }
+  renderWaypointList();
+}
+
+function addWaypoint(latitude, longitude, name, altitude = null) {
+  let wp;
+  try {
+    wp = new Waypoint({ latitude, longitude, altitude, name });
+  } catch (err) {
+    toast(err.message);
+    return null;
+  }
+  const entry = { id: newWaypointId(), ...wp.toJSON() };
+  state.waypoints.push(entry);
+  saveWaypoints();
+  renderWaypointList();
+  return entry;
+}
+
+function handleNavUpdate({ distanceM, bearingDeg, position }) {
+  $('nav-distance').textContent = fmtDistance(distanceM);
+  $('nav-bearing-true').textContent = `${Math.round(bearingDeg)}°`;
+
+  const decl = currentDeclination(position.latitude, position.longitude);
+  const magnetic = normalize360(bearingDeg - decl.value);
+  $('nav-bearing-mag').textContent = `${Math.round(magnetic)}°`;
+  $('wmm-status').textContent =
+    `Déclinaison à votre position : ${decl.value.toFixed(1)}° (${decl.source}).`;
+
+  maybeSendBearing(magnetic);
+}
+
+/**
+ * Envoie le cap au casque, mais avec parcimonie : une écriture BLE par
+ * changement significatif, ou au plus une par seconde. Sans ce filtre, un
+ * GPS à 1 Hz saturerait la file d'attente GATT pour rien.
+ */
+async function maybeSendBearing(magneticBearing) {
+  if (!state.navAutoSend || !state.connected) return;
+  const now = Date.now();
+  const changed = state.lastSentBearing === null
+    || Math.abs(wrap180(magneticBearing - state.lastSentBearing)) >= 1;
+  if (!changed || now - state.lastSentAt < 1000) return;
+
+  state.lastSentBearing = magneticBearing;
+  state.lastSentAt = now;
+  try {
+    await ble.sendTargetAzimuth(magneticBearing);
+    setTargetLocal(magneticBearing, { fromDevice: true });  // pas une saisie utilisateur
+  } catch { /* déconnexion en cours : la prochaine position réessaiera */ }
+}
+
+function setGpsActive(on) {
+  state.gpsOn = on;
+  $('btn-gps-toggle').textContent = on ? '⏹ Arrêter le GPS' : '📍 Activer le GPS';
+  $('btn-wp-here').disabled = !on;
+  if (on) {
+    try {
+      nav.startTracking();
+      $('gps-status').textContent = 'Acquisition de la position…';
+    } catch (err) {
+      state.gpsOn = false;
+      $('gps-status').textContent = err.message;
+      $('btn-gps-toggle').textContent = '📍 Activer le GPS';
+    }
+  } else {
+    nav.stop();
+    state.selectedWpId = null;
+    $('nav-active').classList.add('hidden');
+    $('gps-lat').textContent = '--';
+    $('gps-lon').textContent = '--';
+    $('gps-acc').textContent = '--';
+    $('gps-status').textContent = 'GPS inactif.';
+    renderWaypointList();
+  }
+}
+
+async function importGpxFile(file) {
+  const status = $('import-status');
+  status.textContent = 'Lecture du fichier…';
+  try {
+    const result = parseGpx(await file.text());
+    let added = 0;
+    for (const wp of result.waypoints) {
+      state.waypoints.push({ id: newWaypointId(), ...wp.toJSON() });
+      added++;
+    }
+    saveWaypoints();
+    renderWaypointList();
+    const notes = result.warnings.length ? ` ${result.warnings.join(' ')}` : '';
+    status.textContent = `${added} point(s) importé(s) depuis ${file.name}.${notes}`;
+    toast(`📂 ${added} point(s) importé(s)`);
+  } catch (err) {
+    status.textContent = `Échec : ${err.message}`;
+  }
+}
+
+async function initGeomagModel() {
+  const el = $('wmm-status');
+  try {
+    const info = await geomag.loadDefaultModel();
+    $('manual-decl-row').classList.add('hidden');
+    el.textContent = `Modèle ${info.name} chargé (époque ${info.epoch}, `
+                   + `valide jusqu'à ${info.validUntil}). La déclinaison est `
+                   + 'calculée automatiquement depuis votre position.';
+  } catch {
+    // Sans coefficients officiels on ne devine pas : on bascule en manuel
+    // plutôt que d'appliquer une valeur inventée.
+    $('manual-decl-row').classList.remove('hidden');
+    el.textContent = 'Modèle magnétique absent (data/WMM.COF). La déclinaison '
+                   + 'doit être saisie à la main ci-dessous.';
+  }
+}
+
+function bindNavigation() {
+  $('btn-gps-toggle').addEventListener('click', () => setGpsActive(!state.gpsOn));
+
+  $('btn-wp-here').addEventListener('click', () => {
+    const here = nav.lastPosition;
+    if (!here) { toast('Position GPS pas encore disponible'); return; }
+    const name = ($('wp-name').value || '').trim()
+      || `Position ${new Date().toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}`;
+    const wp = addWaypoint(here.latitude, here.longitude, name, here.altitude);
+    if (wp) { $('wp-name').value = ''; toast(`📌 ${wp.name} enregistré`); }
+  });
+
+  $('btn-wp-add').addEventListener('click', () => {
+    const lat = parseFloat($('wp-lat').value);
+    const lon = parseFloat($('wp-lon').value);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      toast('Latitude et longitude requises');
+      return;
+    }
+    const name = ($('wp-name').value || '').trim() || `Point ${state.waypoints.length + 1}`;
+    if (addWaypoint(lat, lon, name)) {
+      $('wp-lat').value = ''; $('wp-lon').value = ''; $('wp-name').value = '';
+    }
+  });
+
+  $('wp-import').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) importGpxFile(file);
+    e.target.value = '';   // permet de réimporter le même fichier
+  });
+
+  $('nav-auto').addEventListener('change', (e) => {
+    state.navAutoSend = e.target.checked;
+    state.lastSentBearing = null;   // force un envoi immédiat
+    if (state.navAutoSend && !state.connected) {
+      toast('Connectez le casque pour lui envoyer le cap');
+    }
+  });
+
+  $('btn-nav-stop').addEventListener('click', () => selectWaypoint(null));
+
+  $('set-declination').addEventListener('change', (e) => {
+    const v = parseFloat(e.target.value);
+    state.settings.declination = Number.isFinite(v) ? v : 0;
+    e.target.value = state.settings.declination;
+    $('val-declination').textContent = `${state.settings.declination}°`;
+    storage.saveSettings(state.settings);
+  });
+
+  nav.addEventListener('position', (e) => {
+    const p = e.detail;
+    $('gps-lat').textContent = fmtCoord(p.latitude);
+    $('gps-lon').textContent = fmtCoord(p.longitude);
+    $('gps-acc').textContent = Number.isFinite(p.accuracy) ? `±${Math.round(p.accuracy)} m` : '--';
+    $('gps-status').textContent = Number.isFinite(p.accuracy) && p.accuracy > 20
+      ? 'Position peu précise — sous couvert dense, attendez quelques instants.'
+      : 'Position acquise.';
+    renderWaypointList();   // met à jour les distances
+  });
+
+  nav.addEventListener('navupdate', (e) => handleNavUpdate(e.detail));
+
+  nav.addEventListener('navpaused', (e) => {
+    const err = e.detail.error;
+    const messages = {
+      1: 'Permission de localisation refusée. Autorisez-la pour Chrome.',
+      2: 'Position indisponible (pas de signal GPS).',
+      3: 'Délai dépassé — signal GPS trop faible.',
+    };
+    $('gps-status').textContent = messages[err && err.code] || 'Erreur GPS.';
   });
 }
 
@@ -643,6 +937,7 @@ function bindUI() {
 
   bindSettings();
   bindCalibration();
+  bindNavigation();
   $('btn-diag').addEventListener('click', runBluetoothDiagnostics);
 }
 
@@ -731,6 +1026,8 @@ function init() {
   bindBLE();
   bindSystem();
   renderSettingsInputs();
+  renderWaypointList();
+  initGeomagModel();
   if (state.target !== null) setTargetLocal(state.target, { fromDevice: true });
   updateDirectionBanner();
 }

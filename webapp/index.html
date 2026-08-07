@@ -110,6 +110,116 @@
 
   </section>
 
+  <!-- ================= VUE NAVIGATION ================= -->
+  <section id="view-navigation" class="view">
+
+    <div class="card">
+      <h2>Position GPS</h2>
+      <button id="btn-gps-toggle" class="btn btn-secondary btn-block">
+        📍 Activer le GPS
+      </button>
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-value small" id="gps-lat">--</div>
+          <div class="stat-label">Latitude</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value small" id="gps-lon">--</div>
+          <div class="stat-label">Longitude</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value small" id="gps-acc">--</div>
+          <div class="stat-label">Précision</div>
+        </div>
+      </div>
+      <p class="hint" id="gps-status">GPS inactif. Le suivi consomme la batterie
+      du téléphone : ne l'activez qu'en déplacement.</p>
+    </div>
+
+    <div class="card hidden" id="nav-active">
+      <h2>Destination : <span id="nav-target-name">—</span></h2>
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-value accent" id="nav-distance">--</div>
+          <div class="stat-label">Distance</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="nav-bearing-true">--</div>
+          <div class="stat-label">Azimut vrai</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value" id="nav-bearing-mag">--</div>
+          <div class="stat-label">Azimut magn.</div>
+        </div>
+      </div>
+      <label class="switch-row" for="nav-auto">
+        <span>Envoyer le cap au casque en continu</span>
+        <input type="checkbox" id="nav-auto">
+      </label>
+      <p class="hint" id="nav-auto-hint">Le casque suivra automatiquement la
+      direction de la destination à mesure que vous avancez.</p>
+      <button id="btn-nav-stop" class="btn btn-secondary btn-block">
+        Arrêter la navigation
+      </button>
+    </div>
+
+    <div class="banner warn hidden" id="nav-relative-warning">
+      <strong>Le casque n'a pas de boussole</strong>
+      <p>Son cap est relatif et dérive : un azimut GPS n'a de sens que si vous
+      recalez le casque juste avant de partir, puis régulièrement en chemin.
+      Le BNO086 lèvera cette limite.</p>
+    </div>
+
+    <div class="card">
+      <h2>Points de destination</h2>
+      <ul class="wp-list" id="waypoint-list"></ul>
+      <p class="hint" id="waypoint-empty">Aucun point enregistré. Capturez votre
+      position actuelle, saisissez des coordonnées, ou importez un GPX.</p>
+
+      <button id="btn-wp-here" class="btn btn-secondary btn-block" disabled>
+        📌 Enregistrer ma position actuelle
+      </button>
+
+      <div class="wp-form">
+        <input type="number" id="wp-lat" inputmode="decimal" step="0.000001"
+               placeholder="latitude" aria-label="Latitude du nouveau point">
+        <input type="number" id="wp-lon" inputmode="decimal" step="0.000001"
+               placeholder="longitude" aria-label="Longitude du nouveau point">
+      </div>
+      <input type="text" id="wp-name" class="wp-name"
+             placeholder="Nom du point (facultatif)" aria-label="Nom du point">
+      <button id="btn-wp-add" class="btn btn-secondary btn-block">
+        Ajouter ce point
+      </button>
+
+      <label class="btn btn-secondary btn-block file-btn" for="wp-import">
+        📂 Importer un fichier GPX
+      </label>
+      <input type="file" id="wp-import" class="hidden"
+             accept=".gpx,application/gpx+xml,application/xml,text/xml">
+      <p class="hint" id="import-status"></p>
+    </div>
+
+    <div class="card">
+      <h2>Déclinaison magnétique</h2>
+      <p class="hint" id="wmm-status">Vérification du modèle…</p>
+      <div class="setting hidden" id="manual-decl-row">
+        <label for="set-declination">Déclinaison manuelle
+          <output id="val-declination">0°</output>
+        </label>
+        <div class="target-row">
+          <input type="number" id="set-declination" inputmode="decimal"
+                 min="-90" max="90" step="0.1" value="0">
+          <span class="unit">°</span>
+        </div>
+        <p class="hint">Négative vers l'ouest (environ −16° dans le
+        Bas-Saint-Laurent). Valeur de référence :
+        calculateur du gouvernement du Canada.</p>
+      </div>
+    </div>
+
+  </section>
+
   <!-- ================= VUE RÉGLAGES ================= -->
   <section id="view-reglages" class="view">
 
@@ -214,6 +324,7 @@
 
 <nav class="tabbar">
   <button class="tab active" data-view="guidage">🧭 Guidage</button>
+  <button class="tab" data-view="navigation">🗺️ Navigation</button>
   <button class="tab" data-view="reglages">⚙️ Réglages</button>
 </nav>
 

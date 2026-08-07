@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS = {
   rate: 5,            // Hz télémétrie
   offset: 0,          // ° correction de montage
   invert: true,       // sens de rotation du cap (voir config.h côté firmware)
+  declination: 0,     // ° saisis à la main quand le modèle WMM est absent
 };
 
 function readJSON(key) {
