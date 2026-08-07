@@ -133,9 +133,25 @@ Autrement dit : parfait pour valider la chaîne LED / BLE / PWA au banc,
 **inutilisable pour naviguer en forêt**. Après 30 minutes, le cap peut être
 faux de plus de 50°.
 
+### La calibration du biais gyro n'est PAS acquise une fois pour toutes
+
+Mesures successives sur le même module, capteur immobile :
+
+| Situation | Biais Z | Dérive |
+|---|---|---|
+| Juste après calibration (module froid) | −0,795 °/s | **1,8 °/min** |
+| Plusieurs redémarrages plus tard, module chaud | (inchangé) | **≈ 10 °/min** |
+| Après recalibration, module chaud | −0,680 °/s | **0,3 °/min** |
+
+Un écart de seulement **0,1 °/s** sur le biais Z produit 6 °/min de dérive.
+Le biais évoluant avec la température, **il faut recalibrer au début de chaque
+session**, module à sa température de fonctionnement et parfaitement immobile.
+Bien calibré, le mode dégradé tient facilement 10 minutes sous 3° d'erreur.
+
 ### Utilisation
 1. **Calibrer le biais gyro** : commande série `g` (ou depuis l'app), capteur
-   **immobile** ~3 s. Sauvegardé en NVS.
+   **immobile** ~3 s. Sauvegardé en NVS. **À refaire à chaque session** (voir
+   ci-dessus).
 2. **Recaler le cap** aussi souvent que nécessaire : s'orienter à la boussole de
    poche, puis `z 90` en série — ou, dans l'app, le bandeau orange *Cap relatif*
    (saisir le cap réel, bouton **Recaler**).
