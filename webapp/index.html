@@ -170,6 +170,45 @@
       Le BNO086 lèvera cette limite.</p>
     </div>
 
+    <div class="card hidden" id="cluster-panel">
+      <h2>Grappe : <span id="cluster-cur-name">—</span></h2>
+      <p class="hint" id="cluster-progress">—</p>
+      <button id="btn-cluster-next" class="btn btn-primary btn-block">
+        Placette suivante →
+      </button>
+      <p class="hint">Obstacle sur le chemin ? Virez de 90° : les placettes
+      déjà relevées ne bougent pas, seules les suivantes sont replacées.</p>
+      <div class="wp-form">
+        <button id="btn-cluster-left" class="btn btn-secondary">↰ Virer à gauche</button>
+        <button id="btn-cluster-right" class="btn btn-secondary">Virer à droite ↱</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Grappe de micro-placettes</h2>
+      <p class="hint">Une placette tous les X mètres le long d'un azimut,
+      la première au point de départ.</p>
+      <div class="wp-form">
+        <input type="number" id="cluster-azimuth" inputmode="decimal"
+               min="0" max="359" step="1" value="0"
+               placeholder="azimut °" aria-label="Azimut vrai de la ligne">
+        <input type="number" id="cluster-spacing" inputmode="decimal"
+               min="1" step="1" value="100"
+               placeholder="espacement m" aria-label="Espacement en mètres">
+        <input type="number" id="cluster-count" inputmode="numeric"
+               min="1" max="50" step="1" value="10"
+               placeholder="placettes" aria-label="Nombre de placettes">
+      </div>
+      <p class="hint" id="cluster-preview">Azimut <strong>vrai</strong> (nord
+      géographique).</p>
+      <button id="btn-cluster-here" class="btn btn-secondary btn-block" disabled>
+        🌲 Créer la grappe depuis ma position
+      </button>
+      <button id="btn-cluster-from-wp" class="btn btn-secondary btn-block" disabled>
+        🌲 Créer la grappe depuis le point sélectionné
+      </button>
+    </div>
+
     <div class="card">
       <h2>Points de destination</h2>
       <ul class="wp-list" id="waypoint-list"></ul>

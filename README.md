@@ -200,5 +200,6 @@ hébergeur HTTPS. Pour une mise à jour : incrémenter `CACHE_NAME` dans
 | Version | Contenu |
 |---|---|
 | **V0.1 (ceci)** | Azimut manuel, guidage LED, PWA hors ligne, calibration |
-| V0.2 | Batterie Li-ion + jauge ADC, GPS téléphone → cap vers waypoint (`NavigationService` déjà prêt), import GPX/GeoJSON |
+| **V0.2 (en cours)** | Onglet Navigation : suivi GPS, points de destination, **import GPX**, envoi automatique du cap au casque, **grappes de micro-placettes** avec virage à 90° sur obstacle, déclinaison magnétique (modèle WMM) |
+| V0.2 (reste) | Batterie Li-ion + jauge ADC, capteur BNO086 (cap absolu), format `.geogsf` de GSFNav |
 | V0.3+ | Cartes OSM hors ligne, points forestiers, intégration GSFNAV, BNO085, capteur de luminosité (auto-dim), retour haptique |

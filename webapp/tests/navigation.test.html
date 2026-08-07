@@ -21,7 +21,8 @@
   <p id="summary"></p>
 
   <script type="module">
-    import { normalize360, wrap180, calculateDistance, calculateBearing }
+    import { normalize360, wrap180, calculateDistance, calculateBearing,
+             destinationPoint, generateCluster, pivotCluster, DEFAULT_CLUSTER_COUNT }
       from '../src/navigation_service.js';
     import { Waypoint } from '../models/navigation_model.js';
     import { parseGpx } from '../src/gpx_service.js';
@@ -74,6 +75,65 @@
     check('vers le sud = 180°',
       calculateBearing({ latitude: 49, longitude: -68 }, { latitude: 48, longitude: -68 }), 180, 0.01);
 
+    /* ---------- Problème géodésique direct ---------- */
+    section('Point d\'arrivée (problème géodésique direct)');
+    const base = { latitude: 48.45, longitude: -68.52 };
+    const est500 = destinationPoint(base, 90, 500);
+    check('aller-retour : distance conservée', calculateDistance(base, est500), 500, 0.5);
+    check('aller-retour : azimut conservé', calculateBearing(base, est500), 90, 0.01);
+    check('cap 90° : latitude quasi inchangée', est500.latitude, base.latitude, 1e-4);
+    checkTrue('cap 90° : longitude vers l\'est', est500.longitude > base.longitude,
+      `${est500.longitude.toFixed(6)}`);
+    const nord1km = destinationPoint(base, 0, 1000);
+    check('cap 0° : longitude inchangée', nord1km.longitude, base.longitude, 1e-9);
+    checkTrue('cap 0° : latitude augmente', nord1km.latitude > base.latitude,
+      `${nord1km.latitude.toFixed(6)}`);
+    check('cap 180° revient au départ',
+      calculateDistance(destinationPoint(nord1km, 180, 1000), base), 0, 0.5);
+
+    /* ---------- Grappes de micro-placettes ---------- */
+    section('Grappes de micro-placettes');
+    const SPACING = 100;
+    const grappe = generateCluster(base, 45, SPACING);
+    check('10 placettes par défaut', grappe.length, DEFAULT_CLUSTER_COUNT);
+    check('la placette 1 est le point de départ',
+      calculateDistance(grappe[0], base), 0, 1e-6);
+    check('espacement respecté entre 1 et 2',
+      calculateDistance(grappe[0], grappe[1]), SPACING, 0.2);
+    check('espacement respecté entre 9 et 10',
+      calculateDistance(grappe[8], grappe[9]), SPACING, 0.2);
+    check('azimut conservé sur toute la ligne',
+      calculateBearing(grappe[7], grappe[8]), 45, 0.05);
+    check('longueur totale = 9 intervalles',
+      calculateDistance(grappe[0], grappe[9]), 9 * SPACING, 2);
+    checkThrows('espacement nul refusé', () => generateCluster(base, 45, 0));
+
+    // Obstacle à la placette 4 (index 3) : virage à droite
+    const pivot = pivotCluster(grappe, 3, 45, SPACING, 'droite');
+    check('nouvel azimut = ancien + 90°', pivot.azimuth, 135, 1e-9);
+    check('nombre de placettes inchangé', pivot.points.length, grappe.length);
+    check('placettes déjà relevées non déplacées (1)',
+      calculateDistance(pivot.points[0], grappe[0]), 0, 1e-6);
+    check('placettes déjà relevées non déplacées (4)',
+      calculateDistance(pivot.points[3], grappe[3]), 0, 1e-6);
+    check('la placette 5 part dans la nouvelle direction',
+      calculateBearing(pivot.points[3], pivot.points[4]), 135, 0.05);
+    check('espacement conservé après le virage',
+      calculateDistance(pivot.points[4], pivot.points[5]), SPACING, 0.2);
+    checkTrue('la placette 5 a bien bougé',
+      calculateDistance(pivot.points[4], grappe[4]) > 100,
+      `${calculateDistance(pivot.points[4], grappe[4]).toFixed(0)} m de l'ancienne`);
+
+    const pivotG = pivotCluster(grappe, 3, 45, SPACING, 'gauche');
+    check('virage à gauche = ancien − 90°', pivotG.azimuth, 315, 1e-9);
+    // Deux virages successifs : le second repart de la nouvelle ligne
+    const pivot2 = pivotCluster(pivot.points, 5, pivot.azimuth, SPACING, 'droite');
+    check('second virage cumulé', pivot2.azimuth, 225, 1e-9);
+    check('placettes du premier tronçon toujours intactes',
+      calculateDistance(pivot2.points[3], grappe[3]), 0, 1e-6);
+    checkThrows('virage sur la dernière placette refusé',
+      () => pivotCluster(grappe, grappe.length - 1, 45, SPACING));
+
     /* ---------- Waypoint ---------- */
     section('Modèle Waypoint');
     const wp = new Waypoint({ latitude: 48.45, longitude: -68.52, name: 'Camp' });
@@ -114,6 +174,29 @@
 
     checkThrows('XML invalide rejeté', () => parseGpx('<gpx><wpt'));
     checkThrows('fichier non-GPX rejeté', () => parseGpx('<kml><Placemark/></kml>'));
+
+    // Fichier RÉEL digitalisé sous QGIS : GPX 1.0 (et non 1.1), aucun
+    // espace de noms déclaré, et surtout <urlname> au lieu de <name> —
+    // QGIS n'écrit pas de nom de point exploitable.
+    const gpxQgis = `<?xml version="1.0" encoding="utf-8"?>
+<gpx version="1.0" creator="QGIS">
+<wpt lat="48.008763310532" lon="-68.567743660502"><urlname>Digitalisé avec QGIS</urlname><ele>0</ele></wpt>
+<wpt lat="48.009586136452" lon="-68.566703821714"><urlname>Digitalisé avec QGIS</urlname><ele>0</ele></wpt>
+<wpt lat="48.010280074891" lon="-68.567324054969"><urlname>Digitalisé avec QGIS</urlname><ele>0</ele></wpt>
+<wpt lat="48.010230903096" lon="-68.565491187170"><urlname>Digitalisé avec QGIS</urlname><ele>0</ele></wpt>
+<wpt lat="48.010988407667" lon="-68.566394550004"><urlname>Digitalisé avec QGIS</urlname><ele>0</ele></wpt>
+<wpt lat="48.011586764592" lon="-68.567125556634"><urlname>Digitalisé avec QGIS</urlname><ele>0</ele></wpt>
+<wpt lat="48.011309098060" lon="-68.568514883145"><urlname>Digitalisé avec QGIS</urlname><ele>0</ele></wpt>
+<wpt lat="48.009430733413" lon="-68.569180625684"><urlname>Digitalisé avec QGIS</urlname><ele>0</ele></wpt>
+</gpx>`;
+    const qgis = parseGpx(gpxQgis);
+    check('GPX 1.0 sans namespace : 8 points lus', qgis.waypoints.length, 8);
+    check('coordonnées fidèles', qgis.waypoints[0].latitude, 48.008763310532, 1e-12);
+    check('<urlname> n\'est PAS pris pour un nom', qgis.waypoints[0].name, 'Point 1');
+    check('altitude 0 lue comme 0 (et non null)', qgis.waypoints[0].altitude, 0);
+    check('aucune trace dans ce fichier', qgis.trackPointCount, 0);
+    checkTrue('les 8 points sont distincts',
+      new Set(qgis.waypoints.map((w) => `${w.latitude},${w.longitude}`)).size === 8);
 
     /* ---------- Géomagnétisme ----------
        Sans les coefficients officiels, on valide le MOTEUR avec un

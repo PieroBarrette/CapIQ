@@ -6,7 +6,8 @@
 
 import { BLEService, describeBleError } from './ble_service.js';
 import * as storage from './storage_service.js';
-import { wrap180, normalize360, NavigationService, calculateDistance, calculateBearing } from './navigation_service.js';
+import { wrap180, normalize360, NavigationService, calculateDistance, calculateBearing,
+         generateCluster, pivotCluster, DEFAULT_CLUSTER_COUNT } from './navigation_service.js';
 import { Waypoint } from '../models/navigation_model.js';
 import { parseGpx } from './gpx_service.js';
 import * as geomag from './geomag_service.js';
@@ -14,7 +15,7 @@ import * as geomag from './geomag_service.js';
 // DOIT rester aligné sur CACHE_NAME dans service-worker.js : c'est ce que
 // l'onglet Réglages affiche, et donc le seul moyen de savoir quelle version
 // tourne réellement sur un téléphone.
-const APP_VERSION = '0.1.8';
+const APP_VERSION = '0.1.9';
 
 const MODE_LABELS = {
   BOOT: 'Démarrage',
@@ -598,6 +599,8 @@ function selectWaypoint(id) {
   } else if (!state.gpsOn) {
     toast('Activez le GPS pour démarrer le guidage');
   }
+  $('btn-cluster-from-wp').disabled = !wp;
+  renderClusterPanel();
   renderWaypointList();
 }
 
@@ -653,6 +656,7 @@ function setGpsActive(on) {
   state.gpsOn = on;
   $('btn-gps-toggle').textContent = on ? '⏹ Arrêter le GPS' : '📍 Activer le GPS';
   $('btn-wp-here').disabled = !on;
+  $('btn-cluster-here').disabled = !on;
   if (on) {
     try {
       nav.startTracking();
@@ -709,6 +713,155 @@ async function initGeomagModel() {
     el.textContent = 'Modèle magnétique absent (data/WMM.COF). La déclinaison '
                    + 'doit être saisie à la main ci-dessous.';
   }
+}
+
+/* ---------- Grappes de micro-placettes ---------- */
+
+function clusterOf(wp) {
+  return wp && wp.cluster ? wp.cluster : null;
+}
+
+/** Toutes les placettes d'une grappe, dans l'ordre. */
+function clusterMembers(clusterId) {
+  return state.waypoints
+    .filter((w) => w.cluster && w.cluster.id === clusterId)
+    .sort((a, b) => a.cluster.index - b.cluster.index);
+}
+
+function createCluster(start, azimuth, spacing, count, label) {
+  let points;
+  try {
+    points = generateCluster(start, azimuth, spacing, count);
+  } catch (err) {
+    toast(err.message);
+    return null;
+  }
+  const clusterId = newWaypointId();
+  const name = label || `Grappe ${new Date().toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}`;
+
+  points.forEach((p, i) => {
+    state.waypoints.push({
+      id: newWaypointId(),
+      latitude: p.latitude,
+      longitude: p.longitude,
+      altitude: null,
+      name: `${name} — P${i + 1}`,
+      cluster: { id: clusterId, index: i, azimuth, spacing, count: points.length, name },
+    });
+  });
+  saveWaypoints();
+  renderWaypointList();
+
+  const first = clusterMembers(clusterId)[0];
+  selectWaypoint(first.id);
+  toast(`🌲 ${points.length} placettes créées, azimut ${Math.round(azimuth)}°`);
+  return clusterId;
+}
+
+/**
+ * Virage à 90° sur obstacle. Les placettes déjà relevées (jusqu'à celle
+ * sélectionnée incluse) sont conservées telles quelles : les déplacer
+ * fausserait un inventaire déjà fait sur le terrain.
+ */
+function pivotCurrentCluster(side) {
+  const wp = selectedWaypoint();
+  const meta = clusterOf(wp);
+  if (!meta) return;
+
+  const members = clusterMembers(meta.id);
+  const points = members.map((m) => ({ latitude: m.latitude, longitude: m.longitude }));
+  let result;
+  try {
+    result = pivotCluster(points, meta.index, meta.azimuth, meta.spacing, side);
+  } catch (err) {
+    toast(err.message);
+    return;
+  }
+
+  members.forEach((m, i) => {
+    m.latitude = result.points[i].latitude;
+    m.longitude = result.points[i].longitude;
+    // Seules les placettes replacées suivent le nouvel azimut.
+    if (i > meta.index) m.cluster.azimuth = result.azimuth;
+  });
+  saveWaypoints();
+  renderWaypointList();
+  renderClusterPanel();
+  nav.setDestination(selectedWaypoint());
+  toast(`↷ Virage à ${side} : nouvel azimut ${Math.round(result.azimuth)}°`);
+}
+
+function renderClusterPanel() {
+  const wp = selectedWaypoint();
+  const meta = clusterOf(wp);
+  $('cluster-panel').classList.toggle('hidden', !meta);
+  if (!meta) return;
+
+  $('cluster-cur-name').textContent = meta.name;
+
+  // Azimut du TRONÇON À PARCOURIR, mesuré vers la placette suivante — et
+  // non celui de la placette courante. Après un virage, la différence est
+  // exactement ce que le technicien doit suivre.
+  const next = clusterMembers(meta.id).find((m) => m.cluster.index === meta.index + 1);
+  const decl = currentDeclination(wp.latitude, wp.longitude);
+  let route = `Placette ${meta.index + 1} sur ${meta.count} · espacement ${meta.spacing} m`;
+  if (next) {
+    const legTrue = calculateBearing(wp, next);
+    const legMag = normalize360(legTrue - decl.value);
+    route += ` · vers la suivante : ${Math.round(legTrue)}° vrai `
+           + `(${Math.round(legMag)}° à la boussole)`;
+  } else {
+    route += ' · dernière placette';
+  }
+  $('cluster-progress').textContent = route;
+  $('btn-cluster-next').disabled = meta.index >= meta.count - 1;
+  $('btn-cluster-next').textContent = meta.index >= meta.count - 1
+    ? 'Grappe terminée ✓' : `Placette ${meta.index + 2} →`;
+}
+
+function selectNextPlot() {
+  const meta = clusterOf(selectedWaypoint());
+  if (!meta) return;
+  const next = clusterMembers(meta.id).find((m) => m.cluster.index === meta.index + 1);
+  if (next) selectWaypoint(next.id);
+}
+
+function bindClusters() {
+  const readClusterForm = () => ({
+    azimuth: normalize360(parseFloat($('cluster-azimuth').value) || 0),
+    spacing: parseFloat($('cluster-spacing').value),
+    count: parseInt($('cluster-count').value, 10) || DEFAULT_CLUSTER_COUNT,
+  });
+
+  const refreshPreview = () => {
+    const { azimuth } = readClusterForm();
+    const here = nav.lastPosition;
+    const decl = currentDeclination(here && here.latitude, here && here.longitude);
+    $('cluster-preview').innerHTML =
+      `Azimut <strong>vrai</strong> ${Math.round(azimuth)}° — à la boussole, `
+      + `suivez <strong>${Math.round(normalize360(azimuth - decl.value))}°</strong> `
+      + `(déclinaison ${decl.value.toFixed(1)}°, ${decl.source}).`;
+  };
+  $('cluster-azimuth').addEventListener('input', refreshPreview);
+  refreshPreview();
+
+  $('btn-cluster-here').addEventListener('click', () => {
+    const here = nav.lastPosition;
+    if (!here) { toast('Position GPS pas encore disponible'); return; }
+    const { azimuth, spacing, count } = readClusterForm();
+    createCluster(here, azimuth, spacing, count);
+  });
+
+  $('btn-cluster-from-wp').addEventListener('click', () => {
+    const wp = selectedWaypoint();
+    if (!wp) { toast('Sélectionnez d\'abord un point'); return; }
+    const { azimuth, spacing, count } = readClusterForm();
+    createCluster(wp, azimuth, spacing, count, `Grappe ${wp.name}`);
+  });
+
+  $('btn-cluster-next').addEventListener('click', selectNextPlot);
+  $('btn-cluster-left').addEventListener('click', () => pivotCurrentCluster('gauche'));
+  $('btn-cluster-right').addEventListener('click', () => pivotCurrentCluster('droite'));
 }
 
 function bindNavigation() {
@@ -938,6 +1091,7 @@ function bindUI() {
   bindSettings();
   bindCalibration();
   bindNavigation();
+  bindClusters();
   $('btn-diag').addEventListener('click', runBluetoothDiagnostics);
 }
 
