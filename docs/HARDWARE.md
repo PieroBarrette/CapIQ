@@ -159,6 +159,116 @@ Bien calibré, le mode dégradé tient facilement 10 minutes sous 3° d'erreur.
 Le champ `absolute` du statut BLE vaut `false` dans ce mode : l'application
 affiche alors le bandeau d'avertissement et le contrôle de recalage.
 
+## BNO086 — capteur de la version finale (préparation)
+
+Le BNO086 remplacera le module MPU-6500. C'est **la** pièce qui donnera un
+azimut absolu : il embarque sa propre fusion 9 axes (micrologiciel SH-2 de
+CEVA) et sort directement un quaternion d'orientation référencé au nord
+magnétique. Plus de filtre à écrire, plus de dérive à recalibrer.
+
+Le BNO086 et le BNO085 partagent le même protocole SH-2 et les mêmes
+bibliothèques : tout ce qui suit vaut pour les deux.
+
+### Branchement en I2C
+
+| BNO086 | ESP32 WROOM-32 | ESP32-S3 | Rôle |
+|---|---|---|---|
+| VIN | **3V3** | **3V3** | Alimentation de la carte d'adaptation |
+| GND | **GND** | **GND** | Masse commune |
+| SDA | **GPIO 21** | **GPIO 8** | Données I2C (partagées, mêmes broches que le MPU) |
+| SCL | **GPIO 22** | **GPIO 9** | Horloge I2C — **400 kHz maximum** |
+| INT | **GPIO 25** | **GPIO 10** | Interruption « données prêtes », active à l'état bas |
+| RST | **GPIO 26** | **GPIO 11** | Réinitialisation matérielle, active à l'état bas |
+| PS0 | **GND** | **GND** | Sélection du protocole |
+| PS1 | **GND** | **GND** | Sélection du protocole |
+| SA0 / ADR | **GND** (ou libre) | idem | Adresse I2C : bas = `0x4A`, haut = `0x4B` |
+| CS | non connecté | — | Inutilisé en I2C |
+
+GPIO 25 et 26 sont libres sur le WROOM-32, sans rôle au démarrage et sans
+conflit avec la bande LED (GPIO 13) ni la future jauge de batterie (GPIO 34).
+
+### Sélection du protocole : le point à ne pas rater
+
+Le BNO086 choisit son interface au démarrage, d'après l'état des broches
+PS0 et PS1 :
+
+| PS1 | PS0 | Interface |
+|---|---|---|
+| **0** | **0** | **I2C** ← ce qu'on veut |
+| 0 | 1 | UART |
+| 1 | 0 | UART-RVC |
+| 1 | 1 | SPI |
+
+**Les deux doivent être tirées à la masse.** Laissées flottantes, le capteur
+peut démarrer dans un autre mode et rester muet sur le bus I2C — le balayage
+`s` ne verra alors rien à `0x4A`, ce qui ressemble à s'y méprendre à un
+problème de câblage. Certaines cartes d'adaptation ont déjà des résistances
+de tirage vers le bas : **vérifiez la sérigraphie de la vôtre** avant de
+souder, les brochages diffèrent d'un fabricant à l'autre (Adafruit,
+SparkFun Qwiic, clones).
+
+### Broches INT et RST : facultatives en théorie, à câbler en pratique
+
+- **INT** signale qu'un paquet SH-2 est disponible. Sans elle, l'hôte doit
+  interroger le capteur en boucle, ce qui charge le bus et fait perdre des
+  échantillons à haute cadence. Les bibliothèques l'utilisent si on la leur
+  fournit.
+- **RST** garantit un démarrage propre. Sans elle, un capteur laissé dans un
+  état bancal par une coupure d'alimentation peut refuser de s'initialiser
+  jusqu'à une mise hors tension complète.
+
+### Le rapport à demander
+
+Le SH-2 propose plusieurs sorties d'orientation. Le choix est déterminant :
+
+| Rapport | Capteurs | Cap |
+|---|---|---|
+| `SH2_ROTATION_VECTOR` | accéléromètre + gyroscope + magnétomètre | ✅ **absolu** — c'est celui qu'il faut |
+| `SH2_GEOMAGNETIC_ROTATION_VECTOR` | accéléromètre + magnétomètre | ✅ absolu, moins gourmand, plus lent en dynamique |
+| `SH2_GAME_ROTATION_VECTOR` | accéléromètre + gyroscope | ❌ **relatif, dérive** — le piège à éviter |
+
+`SH2_GAME_ROTATION_VECTOR` est souvent l'exemple par défaut des
+bibliothèques : le choisir reproduirait exactement la limite actuelle du
+MPU-6500.
+
+Chaque échantillon est accompagné d'un **indice de précision de 0 à 3**.
+À remonter dans le statut BLE : il indique à l'utilisateur quand la
+calibration dynamique du magnétomètre est encore insuffisante.
+
+### Migration du code
+
+Grâce à l'abstraction `IMUManager`, seul
+[`imu_manager.cpp`](../firmware/src/imu_manager.cpp) est concerné.
+
+1. Ajouter la bibliothèque dans `platformio.ini` :
+   `sparkfun/SparkFun BNO08x Arduino Library` (ou `adafruit/Adafruit BNO08x`).
+2. Ajouter les broches `PIN_IMU_INT` et `PIN_IMU_RST` dans `config.h`.
+3. Étendre le balayage I2C : annoter `0x4A` et `0x4B` comme BNO08x.
+4. Ajouter une valeur `BNO08X_FUSION` à `ImuBackend`, essayée **avant** le
+   MPU-9250 dans `begin()`.
+5. Convertir le quaternion en cap :
+   `yaw = atan2(2(qw·qz + qx·qy), 1 − 2(qy² + qz²))`
+6. `hasAbsoluteHeading()` renvoie alors `true` : le bandeau « cap relatif »
+   de l'application disparaîtra tout seul, ainsi que l'avertissement de
+   l'onglet Navigation.
+7. `calibrateMag()` peut se contenter d'activer la calibration dynamique
+   (`sh2_setCalConfig`) ; la fonction *tare* du SH-2 offre un équivalent
+   direct de `alignHeadingTo()`.
+
+> ⚠️ **Le sens de rotation sera à revérifier.** L'orientation des axes du
+> BNO086 n'est pas celle du MPU-6500. Le réglage *Inverser le sens de
+> rotation* existe précisément pour ça : refaites le test « rotation horaire
+> → le cap doit augmenter » après le changement de capteur.
+
+### Ce qui change côté navigation
+
+Le BNO086 donne un cap **magnétique**. C'est exactement l'entrée qu'attend
+la chaîne GPS déjà en place : `calculateBearing()` produit un azimut
+géographique, `trueToMagnetic()` applique la déclinaison calculée depuis la
+position, et le résultat est directement comparable au cap du casque.
+Dans le Bas-Saint-Laurent, l'écart est d'environ **−16°** — sans cette
+conversion, la cible serait manquée d'autant.
+
 ## Alimentation batterie (V0.2 — prévu, non câblé)
 
 Options identifiées dans la BOM :
