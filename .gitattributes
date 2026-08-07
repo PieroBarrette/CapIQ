@@ -1,0 +1,8 @@
+# Le fichier de coefficients du modèle magnétique doit rester octet pour
+# octet identique à l'original de la NOAA : aucune conversion de fin de
+# ligne, aucune normalisation. Voir webapp/data/LISEZMOI.md.
+webapp/data/WMM.COF -text
+
+# Fichier GPX de référence (export QGIS) utilisé comme cas de test :
+# à conserver tel quel pour rester représentatif.
+test.gpx -text
