@@ -22,6 +22,7 @@ struct Settings {
   uint8_t brightnessPct = LED_DEFAULT_BRIGHTNESS_PCT;
   uint8_t telemetryHz   = TELEMETRY_DEFAULT_HZ;   // 1..20
   float   headingOffset = 0.0f;                   // correction de montage (deg)
+  bool    invertHeading = IMU_INVERT_HEADING_DEFAULT;  // sens de rotation du cap
 };
 
 static IMUManager       imu;
@@ -59,6 +60,7 @@ static void loadState() {
   settings.brightnessPct = prefs.getUChar("bri", LED_DEFAULT_BRIGHTNESS_PCT);
   settings.telemetryHz   = prefs.getUChar("thz", TELEMETRY_DEFAULT_HZ);
   settings.headingOffset = prefs.getFloat("off", 0.0f);
+  settings.invertHeading = prefs.getBool("inv", IMU_INVERT_HEADING_DEFAULT);
   targetAzimuth          = prefs.getFloat("tgt", 0.0f);
   hasTarget              = prefs.getBool("htgt", false);
   prefs.end();
@@ -71,6 +73,7 @@ static void saveSettings() {
   prefs.putUChar("bri", settings.brightnessPct);
   prefs.putUChar("thz", settings.telemetryHz);
   prefs.putFloat("off", settings.headingOffset);
+  prefs.putBool("inv", settings.invertHeading);
   prefs.end();
 }
 
@@ -87,6 +90,10 @@ static void saveTarget() {
 static void applySettings() {
   led.setDeadzone(settings.deadzoneDeg);
   led.setBrightnessPercent(settings.brightnessPct);
+  // preserveHeading=false : au démarrage l'offset vient de la mémoire, il ne
+  // doit surtout pas être recalculé. Le changement à chaud passe, lui, par
+  // handleCommand() qui demande explicitement la conservation du cap.
+  imu.setHeadingInverted(settings.invertHeading, false);
   imu.setHeadingOffset(settings.headingOffset);
 }
 
@@ -107,6 +114,7 @@ static String buildStatusJson() {
   doc["brightness"] = settings.brightnessPct;
   doc["rateHz"]    = settings.telemetryHz;
   doc["offset"]    = settings.headingOffset;
+  doc["invert"]    = settings.invertHeading;
   doc["hasTarget"] = hasTarget;
   String out;
   serializeJson(doc, out);
@@ -166,6 +174,14 @@ static void handleCommand(const String& json) {
     if (doc["brightness"].is<int>())  settings.brightnessPct = constrain(doc["brightness"].as<int>(), 0, 100);
     if (doc["rate"].is<int>())        settings.telemetryHz   = constrain(doc["rate"].as<int>(), 1, 20);
     if (doc["offset"].is<float>())    settings.headingOffset = wrap180(doc["offset"].as<float>());
+    if (doc["invert"].is<bool>()) {
+      // Bascule à chaud : le cap affiché est conservé, l'offset recalculé.
+      // On adopte cet offset avant la sauvegarde, sinon applySettings()
+      // réécrirait l'ancienne valeur et le cap sauterait.
+      settings.invertHeading = doc["invert"].as<bool>();
+      imu.setHeadingInverted(settings.invertHeading, true);
+      settings.headingOffset = imu.getHeadingOffset();
+    }
     saveSettings();
     applySettings();
     pushStatus(true);
@@ -202,6 +218,7 @@ static void printHelp() {
   Serial.println(F("x        effacer les appairages BLE (depannage connexion)"));
   Serial.println(F("a        relancer la publicite BLE (depannage connexion)"));
   Serial.println(F("z <deg>  recaler le cap courant sur <deg> (mode gyro seul)"));
+  Serial.println(F("v        inverser le sens de rotation du cap"));
   Serial.println(F("s        balayer le bus I2C (depannage capteur)"));
   Serial.println(F("R        redemarrer l'ESP32"));
   Serial.println(F("h        cette aide"));
@@ -230,6 +247,12 @@ static void processSerialCommand(String line) {
     case 'i': Serial.println(buildStatusJson()); break;
     case 'x': ble.forgetBonds(); break;
     case 'a': ble.restartAdvertising(); break;
+    case 'v':
+      settings.invertHeading = !settings.invertHeading;
+      imu.setHeadingInverted(settings.invertHeading, true);
+      settings.headingOffset = imu.getHeadingOffset();
+      saveSettings();
+      break;
     case 's': imu.scanBus(); break;
     case 'R': ESP.restart(); break;
     case 'z':

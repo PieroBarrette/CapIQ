@@ -134,8 +134,9 @@ bool IMUManager::updateMpu6500() {
 
   // Yaw : PURE intégration du gyro — aucune référence absolue, donc dérive.
   yawRelative_ += gz * dt;
+  rawYaw_ = yawRelative_;
 
-  const float h = normalize360(IMU_YAW_SIGN * yawRelative_ + headingOffset_);
+  const float h = normalize360(yawSign_ * rawYaw_ + headingOffset_);
   const float r = h * DEG_TO_RAD;
   emaSin_ += HEADING_SMOOTHING_ALPHA * (sinf(r) - emaSin_);
   emaCos_ += HEADING_SMOOTHING_ALPHA * (cosf(r) - emaCos_);
@@ -281,8 +282,8 @@ void IMUManager::update() {
     if (!mpu.update()) return;  // pas de nouvelle donnée
 
     // Yaw brut -180..+180 → cap 0..360 avec déclinaison + offset de montage
-    const float yaw = IMU_YAW_SIGN * mpu.getYaw();
-    const float h   = normalize360(yaw + MAG_DECLINATION_DEG + headingOffset_);
+    rawYaw_ = mpu.getYaw();
+    const float h = normalize360(yawSign_ * rawYaw_ + MAG_DECLINATION_DEG + headingOffset_);
 
     // EMA circulaire : lisser sin/cos évite le saut 359.9 → 0.1
     const float r = h * DEG_TO_RAD;
@@ -333,6 +334,30 @@ void IMUManager::alignHeadingTo(float deg) {
 
 void  IMUManager::setHeadingOffset(float deg) { headingOffset_ = deg; }
 float IMUManager::getHeadingOffset() const    { return headingOffset_; }
+
+bool IMUManager::isHeadingInverted() const { return yawSign_ < 0.0f; }
+
+void IMUManager::setHeadingInverted(bool inverted, bool preserveHeading) {
+  if (isHeadingInverted() == inverted) return;
+  const float current = heading_;
+  yawSign_ = inverted ? -1.0f : +1.0f;
+
+  if (!preserveHeading) {
+    Serial.printf("[IMU] Sens de rotation : %s\n", inverted ? "INVERSE" : "direct");
+    return;
+  }
+
+  // Recalcule l'offset pour que le cap AFFICHÉ ne bouge pas : seul son sens
+  // de variation change. Sans cela, basculer le réglage ferait sauter le cap
+  // et invaliderait un recalage déjà effectué à la boussole.
+  const float decl = (backend_ == ImuBackend::MPU9250_FUSION) ? MAG_DECLINATION_DEG : 0.0f;
+  headingOffset_ = normalize360(current - yawSign_ * rawYaw_ - decl);
+  const float r = current * DEG_TO_RAD;
+  emaSin_ = sinf(r);
+  emaCos_ = cosf(r);
+  Serial.printf("[IMU] Sens de rotation : %s (cap conserve a %.1f deg)\n",
+                inverted ? "INVERSE" : "direct", current);
+}
 
 bool IMUManager::calibrateGyroAccel() {
   if (!healthy_) return false;

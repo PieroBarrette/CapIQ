@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS = {
   brightness: 60,     // % LED
   rate: 5,            // Hz télémétrie
   offset: 0,          // ° correction de montage
+  invert: true,       // sens de rotation du cap (voir config.h côté firmware)
 };
 
 function readJSON(key) {

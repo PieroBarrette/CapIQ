@@ -12,7 +12,7 @@ import { Waypoint } from '../models/navigation_model.js';
 // DOIT rester aligné sur CACHE_NAME dans service-worker.js : c'est ce que
 // l'onglet Réglages affiche, et donc le seul moyen de savoir quelle version
 // tourne réellement sur un téléphone.
-const APP_VERSION = '0.1.5';
+const APP_VERSION = '0.1.6';
 
 const MODE_LABELS = {
   BOOT: 'Démarrage',
@@ -153,6 +153,7 @@ const state = {
   settings: storage.loadSettings(),
   connected: false,
   targetPending: false,    // true = cible saisie localement, pas encore envoyée
+  settingsPending: false,  // true = réglages saisis, pas encore appliqués
   absoluteHeading: true,   // false = cap relatif (gyroscope seul), dérive
   heading: null,
   error: null,
@@ -283,6 +284,22 @@ function handleStatus(st) {
   state.absoluteHeading = st.absolute !== false;
   $('relative-heading-notice').classList.toggle('hidden', state.absoluteHeading);
   $('btn-align').disabled = !state.connected;
+
+  // Le casque recalcule lui-même son offset quand on inverse le sens de
+  // rotation ou qu'on recale le cap : on adopte ses valeurs, sauf si
+  // l'utilisateur a une saisie en attente (voir le bug de l'azimut cible).
+  if (!state.settingsPending) {
+    if (typeof st.offset === 'number' && st.offset !== state.settings.offset) {
+      state.settings.offset = st.offset;
+      $('set-offset').value = st.offset;
+      storage.saveSettings(state.settings);
+    }
+    if (typeof st.invert === 'boolean' && st.invert !== state.settings.invert) {
+      state.settings.invert = st.invert;
+      $('set-invert').checked = st.invert;
+      storage.saveSettings(state.settings);
+    }
+  }
 
   const cal = $('cal-status');
   if (st.imu === false) {
@@ -418,6 +435,7 @@ function renderSettingsInputs() {
   $('set-rate').value = s.rate;
   $('val-rate').textContent = `${s.rate} Hz`;
   $('set-offset').value = s.offset;
+  $('set-invert').checked = !!s.invert;
 }
 
 function bindSettings() {
@@ -442,10 +460,29 @@ function bindSettings() {
     state.settings.offset = Number.isFinite(v) ? wrap180(v) : 0;
     e.target.value = state.settings.offset;
     storage.saveSettings(state.settings);
+    // Même précaution que pour l'azimut cible : tant que l'utilisateur n'a
+    // pas appliqué, le statut du casque ne doit pas écraser sa saisie.
+    state.settingsPending = true;
   });
+
+  // Interrupteur : effet immédiat, sans passer par « Appliquer ». Le casque
+  // conserve le cap affiché et recalcule son offset ; on le relira au statut.
+  $('set-invert').addEventListener('change', async (e) => {
+    state.settings.invert = e.target.checked;
+    storage.saveSettings(state.settings);
+    if (!state.connected) return;
+    try {
+      await ble.sendCommand({ cmd: 'set', invert: state.settings.invert });
+      toast(state.settings.invert ? '🔄 Sens de rotation inversé' : '🔄 Sens de rotation direct');
+    } catch (err) {
+      toast(`Échec : ${err.message}`);
+    }
+  });
+
   $('btn-apply-settings').addEventListener('click', async () => {
     try {
       await ble.sendSettings(state.settings);
+      state.settingsPending = false;
       toast('✓ Réglages appliqués au casque');
     } catch (err) {
       toast(`Échec : ${err.message}`);

@@ -36,8 +36,14 @@ constexpr int PIN_BATTERY_ADC = 34; // FUTUR : input-only, parfait pour l'ADC
 constexpr uint32_t I2C_CLOCK_HZ = 400000;
 constexpr uint8_t  IMU_I2C_ADDR = 0x68;   // AD0 à GND (0x69 si AD0 à 3.3 V)
 
-// Inverser si le module IMU est monté tête en bas sur la casquette.
-constexpr float IMU_YAW_SIGN = +1.0f;
+// Sens de rotation du cap.
+// Le gyroscope suit la règle de la main droite : un Z positif correspond à une
+// rotation ANTI-horaire vue de dessus. Un cap de boussole, lui, augmente dans
+// le sens HORAIRE. Il faut donc inverser par défaut — et l'inverser de nouveau
+// si le module est monté tête en bas sur la casquette.
+// Réglable à chaud depuis l'app (Réglages → Sens de rotation) : cette valeur
+// n'est que le défaut au premier démarrage.
+constexpr bool IMU_INVERT_HEADING_DEFAULT = true;
 
 // Déclinaison magnétique.
 //   0.0  = le cap affiché est un cap MAGNÉTIQUE (défaut — cohérent avec une

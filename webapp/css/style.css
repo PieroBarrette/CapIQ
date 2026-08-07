@@ -254,6 +254,23 @@ input[type="range"] {
 
 .hint { font-size: 0.82rem; color: var(--muted); line-height: 1.45; }
 
+/* Interrupteur : cible tactile pleine largeur, utilisable avec des gants. */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  cursor: pointer;
+}
+.switch-row input[type="checkbox"] {
+  width: 52px;
+  height: 30px;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .diag {
   background: var(--bg);
   border: 1px solid var(--border);

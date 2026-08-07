@@ -137,8 +137,8 @@ export class BLEService extends EventTarget {
   }
 
   /** Pousse les réglages utilisateur vers le casque. */
-  async sendSettings({ deadzone, brightness, rate, offset }) {
-    return this.sendCommand({ cmd: 'set', deadzone, brightness, rate, offset });
+  async sendSettings({ deadzone, brightness, rate, offset, invert }) {
+    return this.sendCommand({ cmd: 'set', deadzone, brightness, rate, offset, invert });
   }
 
   /**

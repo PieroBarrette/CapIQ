@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "config.h"  // IMU_INVERT_HEADING_DEFAULT (valeur initiale du signe)
 
 // ============================================================
 // IMUManager — abstraction de la centrale inertielle
@@ -60,6 +61,14 @@ public:
   void  setHeadingOffset(float deg);
   float getHeadingOffset() const;
 
+  // Sens de rotation du cap.
+  // preserveHeading = true (changement à chaud) : l'offset est recalculé pour
+  //   que le cap AFFICHÉ ne bouge pas, seul son sens de variation change.
+  // preserveHeading = false (application des réglages au démarrage) : le signe
+  //   est posé tel quel, sans toucher à l'offset chargé depuis la mémoire.
+  void setHeadingInverted(bool inverted, bool preserveHeading = true);
+  bool isHeadingInverted() const;
+
   // Calibration gyroscope + accéléromètre.
   // BLOQUANT ~5 s. L'appareil doit rester IMMOBILE ET À PLAT.
   // Sauvegarde automatiquement les offsets en NVS.
@@ -104,6 +113,10 @@ private:
   float pitch_   = 0.0f;
   float roll_    = 0.0f;
   float headingOffset_ = 0.0f;
+  // Angle brut du capteur AVANT application du signe et de l'offset.
+  // Conservé pour pouvoir recalculer l'offset quand le sens s'inverse.
+  float rawYaw_  = 0.0f;
+  float yawSign_ = IMU_INVERT_HEADING_DEFAULT ? -1.0f : +1.0f;
 
   // Lissage EMA circulaire (composantes sin/cos pour gérer le passage 359→0)
   float emaSin_ = 0.0f;
